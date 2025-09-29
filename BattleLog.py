@@ -344,32 +344,32 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         if not month or month.endswith('-01') or month == 'Jan':
             ranking_copy['movement'] = "-"
         else:
-          prev_rankings = get_previous_month_rankings(month)
-
-          # Create dictionary for quick lookup of previous rankings
-          prev_rank_dict = {}
-          for rank in prev_rankings:
-              key = f"{rank['lab']}_{rank['parameter']}_{rank['level']}"
-              prev_rank_dict[key] = rank['ranking']
-
-          # Determine movement
-          key = f"{ranking_copy['lab']}_{ranking_copy['parameter']}_{ranking_copy['level']}"
-
-          # Check if this lab existed in the previous month
-          if not prev_rankings or key not in prev_rank_dict:
-              ranking_copy['movement'] = "NEW"
-          else:
-              prev_rank = prev_rank_dict[key]
-              current_rank = ranking_copy['ranking']
-              
-              if current_rank < prev_rank:
-                  ranking_copy['movement'] = f"↑{prev_rank - current_rank}"
-              elif current_rank > prev_rank:
-                  ranking_copy['movement'] = f"↓{current_rank - prev_rank}"
-              else:
-                  ranking_copy['movement'] = "–"  # No change
-              
-          monthly_rankings_with_movement.append(ranking_copy)
+            # Get previous month's rankings
+            prev_rankings = get_previous_month_rankings(month)
+            
+            # Create dictionary for quick lookup of previous rankings
+            prev_rank_dict = {}
+            for rank in prev_rankings:
+                key = f"{rank['lab']}_{rank['parameter']}_{rank['level']}"
+                prev_rank_dict[key] = rank['ranking']
+            
+            # Determine movement
+            key = f"{ranking_copy['lab']}_{ranking_copy['parameter']}_{ranking_copy['level']}"
+            
+            if key not in prev_rank_dict:
+                ranking_copy['movement'] = "NEW"
+            else:
+                prev_rank = prev_rank_dict[key]
+                current_rank = ranking_copy['ranking']
+                
+                if current_rank < prev_rank:
+                    ranking_copy['movement'] = f"↑{prev_rank - current_rank}"
+                elif current_rank > prev_rank:
+                    ranking_copy['movement'] = f"↓{current_rank - prev_rank}"
+                else:
+                    ranking_copy['movement'] = "–"  # No change
+        
+        monthly_rankings_with_movement.append(ranking_copy)
 
     monthly_rankings_json = json.dumps(monthly_rankings_with_movement)
     lab_ratings_json = json.dumps(lab_ratings)
