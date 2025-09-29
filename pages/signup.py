@@ -105,11 +105,11 @@ st.markdown("""
 
 def get_connection():
     return mysql.connector.connect(
-        host="137.59.109.94",
+        host="145.223.18.115",
         port=3306,
-        user="alfadiagno22_gamifiedqc",
-        password="Cittamall13_",         
-        database="alfadiagno22_gamifiedqc"
+        user="admin",
+        password="@Cittamall13",         
+        database="gamifiedqc" 
     )
 
 st.title("📝 Create a New Account")
