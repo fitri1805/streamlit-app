@@ -65,7 +65,7 @@ def check_required_parameters(lab):
         "Triglycerides", "Urea", "Uric Acid"
     ])
     
-    # Check if all parameters have both levels submitted
+ 
     missing_params = []
     for param in all_parameters:
         param_data = submitted_df[submitted_df['Parameter'] == param]
@@ -78,7 +78,7 @@ def check_required_parameters(lab):
     
     return missing_params
 
-# Function to get all submissions for a lab (for filter)
+
 def get_all_submissions(lab):
     conn = get_connection()
     query = """
@@ -178,7 +178,7 @@ def run():
     # Add filter options for viewing data
     st.subheader("📂 Previously Submitted Data")
     
-    # Create filter options
+    # filter options
     filter_col1, filter_col2 = st.columns(2)
     with filter_col1:
         view_option = st.radio("Filter by:", 
@@ -202,34 +202,43 @@ def run():
     elif view_option == "All time":
         view_df = all_submissions_df
         
-    else:  # Specific month
-        if not all_submissions_df.empty:
-            all_submissions_df['created_at'] = pd.to_datetime(all_submissions_df['created_at'])
-            available_months = sorted(all_submissions_df['created_at'].dt.strftime('%Y-%m').unique(), reverse=True)
-            
-            selected_month = st.selectbox("Select month:", available_months)
-            year, month = selected_month.split('-')
-            
-            conn = get_connection()
-            query = """
-                SELECT * FROM submissions 
-                WHERE Lab = %s AND MONTH(created_at) = %s AND YEAR(created_at) = %s
-                ORDER BY created_at DESC
-            """
-            view_df = pd.read_sql(query, conn, params=[lab, month, year])
-            conn.close()
-        else:
-            view_df = pd.DataFrame()
+    else: 
+        today = date.today()
+        current_year = today.year
+        current_month = today.month
+        
+        available_months = []
+        
+        for month in range(1, 13):
+            month_str = f"{current_year}-{month:02d}"
+            available_months.append(month_str)
+        
+        available_months = sorted(set(available_months), reverse=True)
+        
+        selected_month = st.selectbox("Select month:", available_months)
+        year, month_num = selected_month.split('-')
+        
+        
+        month_text = [
+            'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+        ]
+        month_text = month_text[int(month_num) - 1]
+        
+        conn = get_connection()
+        query = """
+            SELECT * FROM submissions 
+            WHERE Lab = %s AND month = %s AND YEAR(created_at) = %s
+            ORDER BY created_at DESC
+        """
+        view_df = pd.read_sql(query, conn, params=[lab, month_text, int(year)])
+        conn.close()
 
     # Initialize edit mode if not set
     if "edit_mode" not in st.session_state:
         st.session_state.edit_mode = False
 
-    # Create columns to position the buttons at top right of table
     col1, col2, col3 = st.columns([6, 1, 1])  
-
-    #with col1:
-        #st.markdown(f"**Displaying: {view_option}**")
 
     with col2:
         if st.button("✏️ Edit", key="edit_records_button", use_container_width=True):  
@@ -245,9 +254,8 @@ def run():
 
     st.dataframe(view_df)
 
-    # Add delete mode interface (similar to edit mode but simpler)
+    # Add delete mode 
     if st.session_state.get("delete_mode", False):
-        # Add a button to exit delete mode
         if st.button("← Back to Data Entry"):
             st.session_state.delete_mode = False
             st.rerun()
@@ -277,10 +285,10 @@ def run():
             available_levels = params_df[params_df['Parameter'] == selected_param]['Level'].unique()
             selected_level = st.selectbox("Select Level", available_levels, key="delete_level")
             
-            # Show confirmation
+          
             st.warning(f" ⚠️ You are about to delete ALL records for: {selected_param} - {selected_level} This action cannot be undone!")
             
-            # Get count of records that will be deleted
+            
             conn = get_connection()
             query = """
                 SELECT COUNT(*) as count FROM submissions 
@@ -293,11 +301,11 @@ def run():
             
             st.write(f"Number of records that will be deleted: **{record_count}**")
             
-            # Confirmation buttons
+            
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("✅ Confirm Delete", type="primary",  use_container_width=True):
-                    # Delete records from database
+                    
                     conn = get_connection()
                     cursor = conn.cursor()
                     cursor.execute(
@@ -319,7 +327,6 @@ def run():
                         countdown_placeholder.info(f"Returning to data entry in {i} seconds...")
                         time.sleep(1)
                     
-                    # Clear delete mode and refresh
                     st.session_state.delete_mode = False
                     st.rerun()
             
@@ -328,7 +335,7 @@ def run():
                     st.session_state.delete_mode = False
                     st.rerun()
 
-    # If edit mode is activated, show the edit interface
+   
     if st.session_state.get("edit_mode", False):
         # Fetch all parameters and levels for this lab in current month
         today = date.today()
@@ -347,15 +354,13 @@ def run():
         if params_df.empty:
             st.error("No records found for editing.")
         else:
-            # Step 1: Select parameter
+          
             parameters = sorted(params_df['Parameter'].unique())
             selected_param = st.selectbox("Select Parameter", parameters, key="edit_param")
             
-            # Step 2: Select level based on chosen parameter
             available_levels = params_df[params_df['Parameter'] == selected_param]['Level'].unique()
             selected_level = st.selectbox("Select Level", available_levels, key="edit_level")
-            
-            # Step 3: Fetch all records for this parameter and level in current month
+    
             conn = get_connection()
             query = """
                 SELECT * FROM submissions 
@@ -483,7 +488,7 @@ def run():
                         # Clear edit mode
                         st.session_state.edit_mode = False
                         
-                        # Add a countdown timer before refreshing
+                        
                         countdown_placeholder = st.empty()
                         for i in range(5, 0, -1):
                             countdown_placeholder.info(f"Returning to data entry in {i} seconds...")
@@ -496,7 +501,7 @@ def run():
                         st.session_state.edit_mode = False
                         st.rerun()
 
-    # Only show data input section if not in edit mode
+    
     if not st.session_state.edit_mode:
         
         # Data input section
@@ -556,66 +561,73 @@ def run():
         else:
             st.info("No submitted data available to download")
 
-        # Combined button to save data and submit to battle
-        if st.button("💾 Submit to battle"):
-            if not df.empty:
-                errors = []
-                grouped = df.groupby("Parameter")["Level"].apply(list).to_dict()
+        submission_key = f"submission_made_{lab}"  
 
-                # Validation: Each parameter must have L2 in its entries
-                for param, levels in grouped.items():
-                    if "L2" not in levels:
-                        errors.append(param)
+        if submission_key not in st.session_state:
+            st.session_state[submission_key] = False
 
-                if errors:
-                    st.error(f"⚠️ For these parameters you must include Level 2: {', '.join(errors)}")
-                else:
-                    conn = get_connection()
-                    cursor = conn.cursor()
-                    saved_rows = 0
+        if not st.session_state[submission_key]:
+            if st.button("💾 Submit to battle"):
+                st.session_state[submission_key] = True  
+                if not df.empty:
+                    errors = []
+                    grouped = df.groupby("Parameter")["Level"].apply(list).to_dict()
 
-                    for _, row in df.iterrows():
-                        # Insert only valid entries
-                        cursor.execute("""
-                            INSERT INTO submissions 
-                            (Lab, Parameter, Level, Month, `CV(%)`, `n(QC)`, `Working_Days`, Ratio)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (
-                            row["Lab"], row["Parameter"], row["Level"], row["Month"],
-                            row["CV(%)"], row["n(QC)"], row["Working_Days"], row["Ratio"]
-                        ))
-                        saved_rows += 1
+                    for param, levels in grouped.items():
+                        if "L2" not in levels:
+                            errors.append(param)
 
-                    conn.commit()
-                    cursor.close()
-                    conn.close()
+                    if errors:
+                        st.error(f"⚠️ For these parameters you must include Level 2: {', '.join(errors)}")
+                        st.session_state[submission_key] = False  
+                    else:
+                        conn = get_connection()
+                        cursor = conn.cursor()
+                        saved_rows = 0
 
-                    if saved_rows > 0:
-                        st.success(f"✅ Data saved and submitted into battlefield successfully for {lab}!")
-                        
-                        # Update submission count
-                        submission_count = count_current_month_submissions(lab)
-                        
-                        # Check if all required parameters are submitted
-                        missing_params = check_required_parameters(lab)
-                        if missing_params:
-                            st.warning("⚠️ Still missing submissions for:")
-                            for param in missing_params:
-                                st.write(f"- {param}")
-                        else:
-                            st.success("✅ All required test submitted! You're ready for battle!")
+                        for _, row in df.iterrows():
+                            cursor.execute("""
+                                INSERT INTO submissions 
+                                (Lab, Parameter, Level, Month, `CV(%)`, `n(QC)`, `Working_Days`, Ratio)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            """, (
+                                row["Lab"], row["Parameter"], row["Level"], row["Month"],
+                                row["CV(%)"], row["n(QC)"], row["Working_Days"], row["Ratio"]
+                            ))
+                            saved_rows += 1
 
-                        if "llkk_data" not in st.session_state:
-                            st.session_state["llkk_data"] = df
-                        else:
-                            st.session_state["llkk_data"] = pd.concat(
-                                [st.session_state["llkk_data"], df], ignore_index=True
-                            )
+                        conn.commit()
+                        cursor.close()
+                        conn.close()
+
+                        if saved_rows > 0:
+                            st.success(f"✅ Data saved and submitted into battlefield successfully !")
+                            time.sleep(3)
                             
-                        # Refresh the page to show updated data
-                        st.rerun()
-            else:
-                st.warning("⚠️ Please complete all fields before submitting.")
+                            submission_count = count_current_month_submissions(lab)
+                            
+                            missing_params = check_required_parameters(lab)
+                            if missing_params:
+                                st.warning("⚠️ Still missing submissions for:")
+                                time.sleep(2)
+                                for param in missing_params:
+                                    st.write(f"- {param}")
+                            else:
+                                st.success("✅ All required test submitted! You're ready for battle!")
+                                time.sleep(2)
 
+                            if "llkk_data" not in st.session_state:
+                                st.session_state["llkk_data"] = df
+                            else:
+                                st.session_state["llkk_data"] = pd.concat(
+                                    [st.session_state["llkk_data"], df], ignore_index=True
+                                )
+                                
+                            st.rerun()
+                else:
+                    st.warning("⚠️ Please complete all fields before submitting.")
+                    st.session_state[submission_key] = False  
+        else:
+            st.button("💾 Submit to battle", disabled=True, help="Submission already made. Refresh page to submit again.")
 if __name__ == "__main__":
     run()

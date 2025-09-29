@@ -25,9 +25,63 @@ def clear_alldata():
     conn.commit()
     conn.close()
 
-
-
 def run():
+    st.markdown("""
+    <style>
+    @media (max-width: 768px) {
+        .stDataFrame {
+            font-size: 12px;
+        }
+        .stButton > button {
+            width: 100%;
+            margin: 5px 0;
+        }
+        .stSelectbox, .stTextInput {
+            width: 100% !important;
+        }
+    }
+    .stButton > button {
+        background: linear-gradient(135deg, #4169E1 0%, #8A2BE2 50%, #4169E1 100%) !important;
+        border: 2px solid #8A2BE2 !important;
+        color: white !important;
+        font-family: 'Orbitron', monospace !important;
+        font-weight: 700 !important;
+        font-size: 1rem !important;
+        padding: 5px 10px !important;
+        transition: all 0.3s ease !important;
+        position: relative !important;
+        overflow: hidden !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
+        box-shadow: 0 5px 20px rgba(138, 43, 226, 0.5) !important;
+    }
+    .stButton > button::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.3), transparent);
+      transition: left 0.5s;
+    }
+
+    .stButton > button:hover::before {
+        left: 100% !important;
+    }
+
+    .stButton > button:active {
+        transform: translateY(0) !important;
+        box-shadow: 0 3px 15px rgba(138, 43, 226, 0.4) !important;
+    }
+
+    @keyframes battleButtonPulse {
+        0% { box-shadow: 0 5px 20px rgba(138, 43, 226, 0.5); }
+        100% { box-shadow: 0 8px 30px rgba(255, 215, 0, 0.8); }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     apply_sidebar_theme()
     st.title("🛡️ Admin Control Center")
 
@@ -98,11 +152,6 @@ def run():
         simulate_fadzly_algorithm(st.session_state.get("llkk_data", pd.DataFrame()))
         st.success("✅ Battle simulation complete!")
 
-    # Export 
-    if "llkk_data" in st.session_state:
-        csv = st.session_state["llkk_data"].to_csv(index=False).encode("utf-8")
-        st.download_button("📤 Download All Data", csv, "llkk_all_data.csv", "text/csv",key="admin_download" )
-
     # Danger Zone 
     st.subheader("🧨 Danger Zone")
     if st.button("❌ Clear All LLKK Data"):
@@ -110,20 +159,3 @@ def run():
         for key in ["fadzly_battles", "elo_history", "elo_progression","llkk_data"]:
             st.session_state.pop(key, None)
         st.success("All LLKK and battle data has been reset.")
-
-st.markdown("""
-    <style>
-    @media (max-width: 768px) {
-        .stDataFrame {
-            font-size: 12px;
-        }
-        .stButton > button {
-            width: 100%;
-            margin: 5px 0;
-        }
-        .stSelectbox, .stTextInput {
-            width: 100% !important;
-        }
-    }
-    </style>
-    """, unsafe_allow_html=True)

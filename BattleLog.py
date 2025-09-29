@@ -92,7 +92,6 @@ def get_db_connection():
         database="gamifiedqc"
     )
 
-# Fetch data from DB
 def fetch_lab_data(lab=None):
     conn = get_db_connection()
     query = "SELECT * FROM submissions"
@@ -104,7 +103,7 @@ def fetch_lab_data(lab=None):
 
     df = pd.read_sql(query, conn, params=params)
     conn.close()
-    return df
+    return df.reset_index(drop=True)
 
 def get_lab_avatars():
     """
@@ -206,7 +205,7 @@ def get_monthly_final(month=None):
     conn.close()
     return df
 
-def save_battle_log(lab_a, lab_b, winner, loser, updated_rating_a, updated_rating_b):
+def save_battle_log(lab_a, lab_b, winner, loser, updated_rating_a, updated_rating_b, month=None):
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -221,20 +220,49 @@ def save_battle_log(lab_a, lab_b, winner, loser, updated_rating_a, updated_ratin
 
     cursor.execute("""
         INSERT INTO battle_logs
-        (round_num, lab_a, lab_b, winner, loser, updated_rating_a, updated_rating_b)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        (round_num, lab_a, lab_b, winner, loser, updated_rating_a, updated_rating_b, month)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """, (
         round_num_to_store,
-        lab_a, lab_b, winner, loser, updated_rating_a, updated_rating_b
+        lab_a, lab_b, winner, loser, updated_rating_a, updated_rating_b, month
     ))
 
     conn.commit()
     cursor.close()
     conn.close()
 
-def run_battlelog(auto_play=False, user_role="admin", user_lab=None):
+def run_battlelog(auto_play=False, user_role="admin", user_lab=None,selected_months=None, show_all_data=True):
     
     conn = get_db_connection()
+
+    # Get simulation month filters from session state
+    simulation_months = st.session_state.get('simulation_months')
+    run_all_months = st.session_state.get('run_all_months', True)
+    
+    # Filter battle logs by simulation months
+    if simulation_months and not run_all_months:
+        placeholders = ','.join(['%s'] * len(simulation_months))
+        battle_logs_query = f"SELECT * FROM battle_logs WHERE month IN ({placeholders}) ORDER BY CAST(round_num AS UNSIGNED) ASC"
+        battle_logs_df = pd.read_sql(battle_logs_query, conn, params=simulation_months)
+    else:
+        battle_logs_df = pd.read_sql("SELECT * FROM battle_logs ORDER BY CAST(round_num AS UNSIGNED) ASC", conn)
+
+    # Filter monthly rankings by simulation months
+    if simulation_months and not run_all_months:
+        placeholders = ','.join(['%s'] * len(simulation_months))
+        monthly_rankings_query = f"SELECT * FROM monthly_rankings WHERE month IN ({placeholders}) ORDER BY parameter, level, ranking ASC"
+        monthly_rankings_df = pd.read_sql(monthly_rankings_query, conn, params=simulation_months)
+    else:
+        monthly_rankings_df = pd.read_sql("SELECT * FROM monthly_rankings ORDER BY parameter, level, ranking ASC", conn)
+
+    # Filter monthly final by simulation months
+    if simulation_months and not run_all_months:
+        placeholders = ','.join(['%s'] * len(simulation_months))
+        monthly_final_query = f"SELECT * FROM monthly_final WHERE month IN ({placeholders}) ORDER BY month DESC, lab_rank ASC"
+        monthly_final_df = pd.read_sql(monthly_final_query, conn, params=simulation_months)
+    else:
+        monthly_final_df = pd.read_sql("SELECT * FROM monthly_final ORDER BY month DESC, lab_rank ASC", conn)
+
     battle_logs_df = pd.read_sql(
         "SELECT * FROM battle_logs ORDER BY CAST(round_num AS UNSIGNED) ASC", 
         conn
@@ -281,7 +309,6 @@ def run_battlelog(auto_play=False, user_role="admin", user_lab=None):
     # Get avatar name mapping
     avatar_name_map = get_avatar_names()
     
-    # Pass auto_play flag to the frontend
     st.components.v1.html(render_visual_battle(
         battle_logs_json, 
         monthly_rankings_json, 
@@ -292,50 +319,56 @@ def run_battlelog(auto_play=False, user_role="admin", user_lab=None):
         auto_play, 
         monthly_final_json, 
         user_role,
-        user_lab
+        user_lab,
+        selected_months,  
+        show_all_data    
     ), height=1000, scrolling=True)
 
 #audio cheering 
 with open("sounds/cheering.mp3", "rb") as f:
     b64 = base64.b64encode(f.read()).decode()
 
-def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions, avatar_map, avatar_name_map, auto_play=False, monthly_final=None,user_role="admin", user_lab=None):
-    
+def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions, avatar_map, avatar_name_map, auto_play=False, monthly_final=None,user_role="admin", user_lab=None, selected_months=None, show_all_data=True):
+
+    selected_months_json = json.dumps(selected_months or [])
+    show_all_data_js = str(show_all_data).lower()
+
     battle_logs_json = json.dumps(battle_logs)
-    # Add movement information to monthly rankings
     monthly_rankings_with_movement = []
     for ranking in monthly_rankings:
         ranking_copy = ranking.copy()
         month = ranking_copy.get('month', '')
         
-        # For January, no movement
-        if not month or month.endswith('-01'):
+        # For January or first month, no movement
+        if not month or month.endswith('-01') or month == 'Jan':
             ranking_copy['movement'] = "-"
         else:
-            # Get previous month's rankings
-            prev_rankings = get_previous_month_rankings(month)
-            
-            # dictionary for quick lookup of previous rankings
-            prev_rank_dict = {}
-            for rank in prev_rankings:
-                key = f"{rank['lab']}_{rank['parameter']}_{rank['level']}"
-                prev_rank_dict[key] = rank['ranking']
-            
-            # Determine movement
-            key = f"{ranking_copy['lab']}_{ranking_copy['parameter']}_{ranking_copy['level']}"
-            
-            if key not in prev_rank_dict:
-                ranking_copy['movement'] = "NEW"
-            else:
-                prev_rank = prev_rank_dict[key]
-                if ranking_copy['ranking'] < prev_rank:
-                    ranking_copy['movement'] = f"▲ (from #{prev_rank})"
-                elif ranking_copy['ranking'] > prev_rank:
-                    ranking_copy['movement'] = f"▼ (from #{prev_rank})"
-                else:
-                    ranking_copy['movement'] = "-"  
-        
-        monthly_rankings_with_movement.append(ranking_copy)
+          prev_rankings = get_previous_month_rankings(month)
+
+          # Create dictionary for quick lookup of previous rankings
+          prev_rank_dict = {}
+          for rank in prev_rankings:
+              key = f"{rank['lab']}_{rank['parameter']}_{rank['level']}"
+              prev_rank_dict[key] = rank['ranking']
+
+          # Determine movement
+          key = f"{ranking_copy['lab']}_{ranking_copy['parameter']}_{ranking_copy['level']}"
+
+          # Check if this lab existed in the previous month
+          if not prev_rankings or key not in prev_rank_dict:
+              ranking_copy['movement'] = "NEW"
+          else:
+              prev_rank = prev_rank_dict[key]
+              current_rank = ranking_copy['ranking']
+              
+              if current_rank < prev_rank:
+                  ranking_copy['movement'] = f"↑{prev_rank - current_rank}"
+              elif current_rank > prev_rank:
+                  ranking_copy['movement'] = f"↓{current_rank - prev_rank}"
+              else:
+                  ranking_copy['movement'] = "–"  # No change
+              
+          monthly_rankings_with_movement.append(ranking_copy)
 
     monthly_rankings_json = json.dumps(monthly_rankings_with_movement)
     lab_ratings_json = json.dumps(lab_ratings)
@@ -1611,6 +1644,17 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
             animation: weapon-swing-left 0.6s cubic-bezier(0.25, 0.8, 0.25, 1), 
                       weapon-glow 0.6s ease-in-out;
         }}
+        .bonus-notice {{
+          position: absolute;
+          bottom: 10px;
+          right: 10px;
+          color: #ffd700;
+          font-size: 12px;
+          font-weight: bold;
+          text-align: right;
+          text-shadow: 1px 1px 2px black;
+      }}
+        
       </style>
     </head>
     <body>
@@ -1666,6 +1710,10 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         <div id="battle-log-entries"></div>
       </div>
 
+      <div class="bonus-notice">
+        Bonus awaits those who <br> achieve the target CV & Ratio!
+      </div>
+
       <div id="rankings-section" class="rankings-section hidden">
         <h2>ANCIENT SCROLLS OF POWER</h2>
         <div id="rankings-container"></div>
@@ -1689,6 +1737,29 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         const monthlyFinalData = {monthly_final_json};
         const userRole = "{user_role}";
         const userLab = "{user_lab or ''}";
+        const selectedMonths = {selected_months_json};
+        const showAllData = {show_all_data_js};
+
+        // --- MONTH FILTERING FUNCTION ---
+        function filterDataByMonths(data) {{
+            if (showAllData || !selectedMonths || selectedMonths.length === 0) {{
+                return data;
+            }}
+            return data.filter(item => selectedMonths.includes(item.month));
+        }}
+
+        // --- APPLY FILTERS TO ALL DATA ---
+        const filteredBattleLogs = filterDataByMonths(battleLogs);
+        const filteredMonthlyRankings = filterDataByMonths(monthlyRankings);
+        const filteredMonthlyFinalData = filterDataByMonths(monthlyFinalData);
+        const filteredSubmissions = filterDataByMonths(submissions);
+
+        // Display filter info
+        if (selectedMonths && selectedMonths.length > 0 && !showAllData) {{
+            console.log(`🎯 Displaying data for months: ${{selectedMonths.join(', ')}}`);
+            // You can also show this message in the UI
+            document.getElementById('narrator-text').innerText = `Battles for: ${{selectedMonths.join(', ')}}`;
+        }}
         
         let currentBattleIndex = 0;
         let isAutoPlaying = autoPlay;
@@ -1772,9 +1843,9 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
 
         function showMonthlyFinal() {{
           console.log("Show Monthly Final clicked");
-          console.log("Monthly Final Data:", monthlyFinalData);
+          console.log("Monthly Final Data:", filteredMonthlyFinalData);
           
-          if (!monthlyFinalData || monthlyFinalData.length === 0) {{
+          if (!filteredMonthlyFinalData || filteredMonthlyFinalData.length === 0) {{
               alert("No monthly final data available!");
               return;
           }}
@@ -1788,9 +1859,9 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           const container = document.getElementById('monthly-final-container');
           container.innerHTML = '';
           
-          console.log("Monthly Final Data:", monthlyFinalData);
+          console.log("Monthly Final Data:", filteredMonthlyFinalData);
           
-          if (!monthlyFinalData || monthlyFinalData.length === 0) {{
+          if (!filteredMonthlyFinalData || filteredMonthlyFinalData.length === 0) {{
               container.innerHTML = '<p>No monthly final data available.</p>';
               return;
           }}
@@ -1800,7 +1871,7 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           }}
           
           const groupedByMonth = {{}};
-          monthlyFinalData.forEach(row => {{
+          filteredMonthlyFinalData.forEach(row => {{
               const month = row.month;
               if (!groupedByMonth[month]) {{
                   groupedByMonth[month] = [];
@@ -2239,15 +2310,53 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         function addBattleLog(message) {{
           const logEntry = document.createElement('div');
           logEntry.className = 'battle-log-entry';
+          
+          // Add month filter info to the first entry
+          if (document.getElementById('battle-log-entries').children.length === 0) {{
+              if (selectedMonths && selectedMonths.length > 0 && !showAllData) {{
+                  const filterInfo = document.createElement('div');
+                  filterInfo.className = 'battle-log-entry';
+                  filterInfo.style.background = 'rgba(255, 215, 0, 0.2)';
+                  filterInfo.innerHTML = `📅 <strong>Displaying battles for months:</strong> ${{selectedMonths.join(', ')}}`;
+                  document.getElementById('battle-log-entries').appendChild(filterInfo);
+              }}
+          }}
+          
           logEntry.innerHTML = message;
           document.getElementById('battle-log-entries').appendChild(logEntry);
           document.getElementById('battle-log-entries').scrollTop = document.getElementById('battle-log-entries').scrollHeight;
         }}
-        
+
+        function addRankingsButton() {{
+          const controlsDiv = document.querySelector('.controls');
+          // Remove existing rankings button if it exists
+          const existingBtn = document.getElementById('show-rankings-btn');
+          if (existingBtn) {{
+              existingBtn.remove();
+          }}
+          
+          const rankingsButton = document.createElement('button');
+          rankingsButton.id = 'show-rankings-btn';
+          rankingsButton.textContent = '📊 Show Rankings';
+          rankingsButton.onclick = function() {{
+              showRankings();
+              document.getElementById('rankings-section').scrollIntoView({{behavior: 'smooth'}});
+          }};
+          
+          // Insert after the Watch Battle button
+          controlsDiv.appendChild(rankingsButton);
+      }}
+
+      // Call this when the page loads
+      window.addEventListener('load', function() {{
+          addRankingsButton();
+      }});
+
+
         async function playBattle() {{
           if (currentBattleIndex >= battleLogs.length || isPaused) return;
           
-          const battle = battleLogs[currentBattleIndex];
+          const battle = filteredBattleLogs[currentBattleIndex];
           
           // Find lab data from submissions
           const labAData = submissions.find(s => s.Lab === battle.lab_a) || {{lab: battle.lab_a}};
@@ -2364,6 +2473,16 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           }}
         }}
 
+        function displayFilterInfo() {{
+            if (selectedMonths && selectedMonths.length > 0 && !showAllData) {{
+                const filterInfo = document.createElement('div');
+                document.querySelector('.battle-log').insertBefore(filterInfo, document.querySelector('.battle-log h3'));
+            }}
+        }}
+
+        // Call this when the page loads
+        window.addEventListener('load', displayFilterInfo);
+
         function createImpactEffect(targetElement, isRightSide) {{
             const rect = targetElement.getBoundingClientRect();
             const impact = document.createElement('div');
@@ -2396,46 +2515,46 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         const container = document.getElementById('rankings-container');
         container.innerHTML = '';
         
-        if (monthlyRankings.length === 0) {{
-            container.innerHTML = '<p>No ranking data available.</p>';
+         if (filteredMonthlyRankings.length === 0) {{
+            container.innerHTML = '<p>No ranking data available for selected months.</p>';
             return;
         }}
         
         // Group by parameter and level
         const groupedData = {{}};
-        monthlyRankings.forEach(row => {{
-            const key = `${{row.parameter}}|${{row.level}}|${{row.month}}`;
-            if (!groupedData[key]) {{
-                groupedData[key] = [];
-            }}
-            groupedData[key].push(row);
-        }});
-        
-        // Create tables for each group
-        for (const [key, rankings] of Object.entries(groupedData)) {{
-            const [parameter, level, month] = key.split('|');
-            
-            const table = document.createElement('table');
-            table.className = 'rankings-table';
-            
-            // Table header
-            const thead = document.createElement('thead');
-            thead.innerHTML = `
-                <tr>
-                    <th colspan="7" style="text-align:center;">
-                        ${{parameter}} - ${{level}} (Month: ${{month}})
-                    </th>
-                </tr>
-                <tr>
-                    <th>Rank</th>
-                    <th>Lab</th>
-                    <th>Elo Before Bonus</th>
-                    <th>Bonus</th>
-                    <th>Final Elo</th>
-                    ${{month. endsWith('-01') ? '' : '<th>Movement</th>'}}
-                </tr>
-            `;
-            table.appendChild(thead);
+          filteredMonthlyRankings.forEach(row => {{
+              const key = `${{row.parameter}}|${{row.level}}|${{row.month}}`;
+              if (!groupedData[key]) {{
+                  groupedData[key] = [];
+              }}
+              groupedData[key].push(row);
+          }});
+
+          // Create tables for each group
+          for (const [key, rankings] of Object.entries(groupedData)) {{
+              const [parameter, level, month] = key.split('|');
+              
+              const table = document.createElement('table');
+              table.className = 'rankings-table';
+              
+              // Table header - Show only current month's data
+              const thead = document.createElement('thead');
+              thead.innerHTML = `
+                  <tr>
+                      <th colspan="${{month.endsWith('-01') ? '6' : '7'}}" style="text-align:center;">
+                          ${{parameter}} - ${{level}} (Month: ${{month}})
+                      </th>
+                  </tr>
+                  <tr>
+                      <th>Rank</th>
+                      <th>Lab</th>
+                      <th>Elo Before Bonus</th>
+                      <th>Bonus</th>
+                      <th>Final Elo</th>
+                      ${{month.endsWith('-01') ? '' : '<th>Movement</th>'}}
+                  </tr>
+              `;
+              table.appendChild(thead);
             
             // Table body
             const tbody = document.createElement('tbody');
@@ -2542,38 +2661,48 @@ def save_monthly_ranking(lab, parameter, level, month, elo_before_bonus, bonus, 
     conn.commit()
     conn.close()
 
-def get_previous_month_rankings(month):   
-    if not month or '-' not in month or month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                                                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']:
+def get_previous_month_rankings(current_month):   
+    if not current_month:
         return []
     
     try:
-      
-        year, month_num = map(int, month.split('-'))
-        
-        # Calculate previous month
-        if month_num == 1:
-            prev_month = f"{year-1}-12"
+        if '-' in current_month:
+            year, month_num = map(int, current_month.split('-'))
+            if month_num == 1:
+                prev_month = f"{year-1}-12"
+            else:
+                prev_month = f"{year}-{month_num-1:02d}"
         else:
-            prev_month = f"{year}-{month_num-1:02d}"
-    except (ValueError, AttributeError):
+            month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            current_year = datetime.now().year
+            
+            if current_month in month_order:
+                month_index = month_order.index(current_month)
+                if month_index == 0:
+                    prev_month = f"{current_year-1}-Dec"
+                else:
+                    prev_month = f"{current_year}-{month_order[month_index-1]}"
+            else:
+                return []
         
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT lab, parameter, level, ranking 
+            FROM monthly_rankings 
+            WHERE month = %s
+        """, (prev_month,))
+        
+        prev_rankings = cursor.fetchall()
+        conn.close()
+        
+        return prev_rankings
+        
+    except Exception as e:
+        print(f"Error getting previous month rankings: {e}")
         return []
-    
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    cursor.execute("""
-        SELECT lab, parameter, level, ranking 
-        FROM monthly_rankings 
-        WHERE month = %s
-    """, (prev_month,))
-    
-    prev_rankings = cursor.fetchall()
-    conn.close()
-    
-    return prev_rankings
-
 
 def clear_battlelog():
     conn = get_db_connection()
@@ -2584,175 +2713,207 @@ def clear_battlelog():
     conn.commit()
     conn.close()
 
-def simulate_fadzly_algorithm(df):
+def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
     st.subheader("⚔️ LLKK Battle Arena")
     if st.session_state.get('simulation_run_this_month', False):
         st.warning("Simulation already run this session. Refresh the page to run again.")
         return
     
-    # Mark simulation as run
     st.session_state.simulation_run_this_month = True
+
+    st.session_state.simulation_months = selected_months if not run_all_months else None
+    st.session_state.run_all_months = run_all_months
+
+    original_df = df.copy()
+    
+    if selected_months and not run_all_months:
+        df = df[df['Month'].isin(selected_months)]
+        st.success(f"🎯 Simulation running for months: {', '.join(selected_months)}")
+    else:
+        st.success("🎯 Simulation running for ALL available months")
+    
+    if df.empty:
+        st.error("❌ No data available for the selected months!")
+        return
 
     # Clean numeric inputs
     df["CV(%)"] = pd.to_numeric(df["CV(%)"], errors="coerce")
     df["Ratio"] = pd.to_numeric(df["Ratio"], errors="coerce")
     df = df.dropna(subset=["n(QC)", "Working_Days"])
 
-    # Initialize rating buckets from database
+    # Initialize rating from database
     ratings = {}
     battle_logs = []
     rating_progression = []
     K = 32
 
-    # Penalize missing submissions
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT lab, parameter, level, rating FROM lab_ratings")
+    existing_ratings = cursor.fetchall()
+    conn.close()
+    
+    # Create a dictionary for quick lookup
+    rating_lookup = {}
+    for row in existing_ratings:
+        key = f"{row['lab']}_{row['parameter']}_{row['level']}"
+        rating_lookup[key] = row['rating']
+    
+    month_order = {
+        'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+        'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+    }
+    
+    def get_month_value(month_str):
+        if '-' in month_str:  
+            return month_str
+        else:  
+            current_year = datetime.now().year
+            month_num = month_order.get(month_str, 1)
+            return f"{current_year}-{month_num:02d}"
+
+    # Sort months chronologically
+    sorted_months = sorted(df["Month"].unique(), key=lambda x: get_month_value(x))
+    
+    # Penalize missing submissions FIRST
     all_labs = df["Lab"].unique().tolist()
     all_params = df["Parameter"].unique().tolist()
     all_levels = df["Level"].unique().tolist()
-    all_months = df["Month"].unique().tolist()
 
-    expected_combinations = list(itertools.product(all_labs, all_params, all_levels, all_months))
-    actual_submissions = set(tuple(row) for row in df[["Lab", "Parameter", "Level", "Month"]].drop_duplicates().to_numpy())
+    months_to_process = df["Month"].unique()
+    
+    for month in sorted(months_to_process, key=lambda x: get_month_value(x)):
+        monthly_data = df[df["Month"] == month]
+        
+        for (param, level), group in monthly_data.groupby(["Parameter", "Level"]):
+            key_prefix = f"{param}_{level}"
 
-    for lab, param, level, month in expected_combinations:
-        if (lab, param, level, month) not in actual_submissions:
-            key = f"{lab}_{param}_{level}"
-            # Get current rating from database
-            current_rating = get_lab_rating(lab, param, level)
-            # Apply penalty and update database
-            updated_rating = current_rating - 10
-            update_lab_rating(lab, param, level, updated_rating)
-            ratings[key] = updated_rating
+            for lab in group["Lab"].unique():
+                lab_key = f"{lab}_{key_prefix}"
+                if lab_key not in ratings:
+                    ratings[lab_key] = rating_lookup.get(lab_key, 1500)
 
-    # Battle loop
-    for (param, level, month), group in df.groupby(["Parameter", "Level", "Month"]):
-        labs = group.to_dict("records")
-        key_prefix = f"{param}_{level}"
-
-        # Initialize ratings for labs in this group from database
-        for lab in group["Lab"].unique():
-            lab_key = f"{lab}_{key_prefix}"
-            if lab_key not in ratings:
-                ratings[lab_key] = get_lab_rating(lab, param, level)
-
-        # All pairings
-        for lab1, lab2 in itertools.combinations(labs, 2):
-            labA, labB = lab1["Lab"], lab2["Lab"]
-            cvA, cvB = lab1.get("CV(%)"), lab2.get("CV(%)")
-            rA, rB = lab1.get("Ratio"), lab2.get("Ratio")
-
-            labA_key = f"{labA}_{key_prefix}"
-            labB_key = f"{labB}_{key_prefix}"
-
-            # Penalties for missing values
-            penalty_A = 10 if pd.isna(cvA) or pd.isna(rA) else 0
-            penalty_B = 10 if pd.isna(cvB) or pd.isna(rB) else 0
-
-            # CV score
-            if pd.isna(cvA) and pd.isna(cvB):
-                cv_score_A = cv_score_B = 0.5  # Draw if both missing
-            elif pd.isna(cvA):
-                cv_score_A, cv_score_B = 0, 1
-            elif pd.isna(cvB):
-                cv_score_A, cv_score_B = 1, 0
-            elif cvA < cvB:
-                cv_score_A, cv_score_B = 1, 0
-            elif cvA > cvB:
-                cv_score_A, cv_score_B = 0, 1
-            else:
-                cv_score_A = cv_score_B = 0.5
-
-            # Ratio metric
-            if pd.isna(rA) and pd.isna(rB):
-                ratio_score_A = ratio_score_B = 0.5
-            elif pd.isna(rA):
-                ratio_score_A, ratio_score_B = 0, 1
-            elif pd.isna(rB):
-                ratio_score_A, ratio_score_B = 1, 0
-            elif abs(rA - 1.0) < abs(rB - 1.0):  # Closer to 1.0 wins
-                ratio_score_A, ratio_score_B = 1, 0
-            elif abs(rA - 1.0) > abs(rB - 1.0):
-                ratio_score_A, ratio_score_B = 0, 1
-            else:
-                ratio_score_A = ratio_score_B = 0.5
-
-            # Composite score (equal weighting)
-            S_A = (cv_score_A + ratio_score_A) / 2
-            S_B = (cv_score_B + ratio_score_B) / 2
-
-            # ELO calculation
-            Ra, Rb = ratings[labA_key], ratings[labB_key]
-            Ea = 1 / (1 + 10 ** ((Rb - Ra) / 400))
-            Eb = 1 / (1 + 10 ** ((Ra - Rb) / 400))
-
-            # ELO update first (without penalties/bonuses)
-            ratings[labA_key] += K * (S_A - Ea)
-            ratings[labB_key] += K * (S_B - Eb)
-
-            # Then apply penalties after ELO update
-            ratings[labA_key] -= penalty_A
-            ratings[labB_key] -= penalty_B
-
-            # Update database with new ratings
-            update_lab_rating(labA, param, level, ratings[labA_key])
-            update_lab_rating(labB, param, level, ratings[labB_key])
-
-            updatedA = round(ratings[labA_key], 1)
-            updatedB = round(ratings[labB_key], 1)
-
-            battle_logs.append({
-                "Lab_A": labA, "Lab_B": labB,
-                "Parameter": param, "Level": level, "Month": month,
-                "CV_A": cvA, "CV_B": cvB,
-                "Ratio_A": rA, "Ratio_B": rB,
-                "Updated_Points_A": updatedA,
-                "Updated_Points_B": updatedB
-            })
-
-            # Determine winner and loser
-            if updatedA > updatedB:
-                winner, loser = labA, labB
-            elif updatedB > updatedA:
-                winner, loser = labB, labA
-            else:
-                winner, loser = "Draw", "Draw"
-
-            save_battle_log( 
-            lab_a=labA,
-            lab_b=labB,
-            winner=winner,
-            loser=loser,
-            updated_rating_a=updatedA,
-            updated_rating_b=updatedB
-        )
-
-        # Apply CV bonuses AFTER all battles for this group are complete
-        for lab in group["Lab"].unique():
-            lab_key = f"{lab}_{key_prefix}"
-            cv_value = group[group["Lab"] == lab]["CV(%)"].values[0]
-            ratio_value = group[group["Lab"] == lab]["Ratio"].values[0]
+            # Apply penalties for missing submissions in this month
+            expected_labs = all_labs
+            actual_labs = group["Lab"].unique()
+            missing_labs = set(expected_labs) - set(actual_labs)
             
-            # Apply CV bonus (meets EFLM target)
-            if not pd.isna(cv_value) and param in EFLM_TARGETS and cv_value <= EFLM_TARGETS[param]:
-                ratings[lab_key] += 5
-                update_lab_rating(lab, param, level, ratings[lab_key])
+            for missing_lab in missing_labs:
+                missing_key = f"{missing_lab}_{key_prefix}"
+                if missing_key not in ratings:
+                    ratings[missing_key] = rating_lookup.get(missing_key, 1500)
+                ratings[missing_key] -= 10
+                update_lab_rating(missing_lab, param, level, ratings[missing_key])
+
+            labs = group.to_dict("records")
             
-            # Apply Ratio bonus (ratio is exactly 1.0)
-            if not pd.isna(ratio_value) and ratio_value == 1.0:
-                ratings[lab_key] += 5
+            # All pairings
+            for lab1, lab2 in itertools.combinations(labs, 2):
+                labA, labB = lab1["Lab"], lab2["Lab"]
+                cvA, cvB = lab1.get("CV(%)"), lab2.get("CV(%)")
+                rA, rB = lab1.get("Ratio"), lab2.get("Ratio")
+
+                labA_key = f"{labA}_{key_prefix}"
+                labB_key = f"{labB}_{key_prefix}"
+
+                # CV score
+                if pd.isna(cvA) and pd.isna(cvB):
+                    cv_score_A = cv_score_B = 0.5
+                elif pd.isna(cvA):
+                    cv_score_A, cv_score_B = 0, 1
+                elif pd.isna(cvB):
+                    cv_score_A, cv_score_B = 1, 0
+                elif cvA < cvB:
+                    cv_score_A, cv_score_B = 1, 0
+                elif cvA > cvB:
+                    cv_score_A, cv_score_B = 0, 1
+                else:
+                    cv_score_A = cv_score_B = 0.5
+
+                # Ratio score
+                if pd.isna(rA) and pd.isna(rB):
+                    ratio_score_A = ratio_score_B = 0.5
+                elif pd.isna(rA):
+                    ratio_score_A, ratio_score_B = 0, 1
+                elif pd.isna(rB):
+                    ratio_score_A, ratio_score_B = 1, 0
+                elif abs(rA - 1.0) < abs(rB - 1.0):
+                    ratio_score_A, ratio_score_B = 1, 0
+                elif abs(rA - 1.0) > abs(rB - 1.0):
+                    ratio_score_A, ratio_score_B = 0, 1
+                else:
+                    ratio_score_A = ratio_score_B = 0.5
+
+                # Composite score
+                S_A = (cv_score_A + ratio_score_A) / 2
+                S_B = (cv_score_B + ratio_score_B) / 2
+
+                # ELO calculation
+                Ra, Rb = ratings[labA_key], ratings[labB_key]
+                Ea = 1 / (1 + 10 ** ((Rb - Ra) / 400))
+                Eb = 1 / (1 + 10 ** ((Ra - Rb) / 400))
+
+                ratings[labA_key] += K * (S_A - Ea)
+                ratings[labB_key] += K * (S_B - Eb)
+
+                update_lab_rating(labA, param, level, ratings[labA_key])
+                update_lab_rating(labB, param, level, ratings[labB_key])
+
+                updatedA = round(ratings[labA_key], 1)
+                updatedB = round(ratings[labB_key], 1)
+
+                battle_logs.append({
+                    "Lab_A": labA, "Lab_B": labB,
+                    "Parameter": param, "Level": level, "Month": month,
+                    "CV_A": cvA, "CV_B": cvB,
+                    "Ratio_A": rA, "Ratio_B": rB,
+                    "Updated_Points_A": updatedA,
+                    "Updated_Points_B": updatedB
+                })
+
+                if updatedA > updatedB:
+                    winner, loser = labA, labB
+                elif updatedB > updatedA:
+                    winner, loser = labB, labA
+                else:
+                    winner, loser = "Draw", "Draw"
+
+                save_battle_log(
+                  lab_a=labA,
+                  lab_b=labB,
+                  winner=winner,
+                  loser=loser,
+                  updated_rating_a=updatedA,
+                  updated_rating_b=updatedB,
+                  month=month  
+              )
+
+            # Apply bonuses AFTER all battles 
+            for lab in group["Lab"].unique():
+                lab_key = f"{lab}_{key_prefix}"
+                cv_value = group[group["Lab"] == lab]["CV(%)"].values[0]
+                ratio_value = group[group["Lab"] == lab]["Ratio"].values[0]
+
+                if not pd.isna(cv_value) and param in EFLM_TARGETS and cv_value <= EFLM_TARGETS[param]:
+                    ratings[lab_key] += 5
+                    update_lab_rating(lab, param, level, ratings[lab_key])
+
+                if not pd.isna(ratio_value) and ratio_value == 1.0:
+                    ratings[lab_key] += 5
+                    update_lab_rating(lab, param, level, ratings[lab_key])
+
                 update_lab_rating(lab, param, level, ratings[lab_key])
 
-            update_lab_rating(lab, param, level, ratings[lab_key])
-
-        # Record rating progression after all battles and bonuses for this group
-        for lab in group["Lab"].unique():
-            lab_key = f"{lab}_{key_prefix}"
-            rating_progression.append({
-                "Lab": lab,
-                "Parameter": param,
-                "Level": level,
-                "Month": month,
-                "Points": round(ratings[lab_key], 2)
-            })
+            # Record rating progression for this month
+            for lab in group["Lab"].unique():
+                lab_key = f"{lab}_{key_prefix}"
+                rating_progression.append({
+                    "Lab": lab,
+                    "Parameter": param,
+                    "Level": level,
+                    "Month": month,
+                    "Points": round(ratings[lab_key], 2)
+                })
 
     # Aggregate final per-lab ELO-style points
     lab_elos = {}
@@ -2778,86 +2939,83 @@ def simulate_fadzly_algorithm(df):
     
     # Save monthly rankings to database
     summary_tables = []
-    for (param, level, month), group in df.groupby(["Parameter", "Level", "Month"]):
-      rows = []
-      for lab in group["Lab"].unique():
-          lab_key = f"{lab}_{param}_{level}"
-          current_rating = ratings[lab_key]
+    for month in months_to_process:
+          month_data = df[df["Month"] == month]
+          
+          for (param, level), group in month_data.groupby(["Parameter", "Level"]):
+              rows = []
+              for lab in group["Lab"].unique():
+                  lab_key = f"{lab}_{param}_{level}"
+                  if lab_key in ratings:
+                      current_rating = ratings[lab_key]
+                      
+                      cv = group[group["Lab"] == lab]["CV(%)"].values[0]
+                      ratio_val = group[group["Lab"] == lab]["Ratio"].values[0]
 
-          cv = group[group["Lab"] == lab]["CV(%)"].values[0]
-          ratio_val = group[group["Lab"] == lab]["Ratio"].values[0]
+                      cv_bonus = 5 if (not pd.isna(cv) and param in EFLM_TARGETS and cv <= EFLM_TARGETS[param]) else 0
+                      ratio_bonus = 5 if (not pd.isna(ratio_val) and ratio_val == 1.0) else 0
+                      bonus = cv_bonus + ratio_bonus
 
-          cv_bonus = 5 if (not pd.isna(cv) and param in EFLM_TARGETS and cv <= EFLM_TARGETS[param]) else 0
-          ratio_bonus = 5 if (not pd.isna(ratio_val) and ratio_val == 1.0) else 0
-          bonus = cv_bonus + ratio_bonus
+                      elo_before_bonus = current_rating - bonus
+                      final_elo = current_rating
 
-          elo_before_bonus = current_rating - bonus
-          final_elo = current_rating
+                      rows.append({
+                          "Lab": lab,
+                          "Test": param,
+                          "Level": level,
+                          "Month": month,
+                          "Elo (before bonus)": round(elo_before_bonus, 1),
+                          "Bonus": f"+{bonus}",
+                          "Final Elo": round(final_elo, 1)
+                      })
 
-          rows.append({
-              "Lab": lab,
-              "Test": param,
-              "Level": level,
-              "Month": month,
-              "Elo (before bonus)": round(elo_before_bonus, 1),
-              "Bonus": f"+{bonus}",
-              "Final Elo": round(final_elo, 1)
-          })
+              if rows:
+                  df_table = pd.DataFrame(rows).sort_values("Final Elo", ascending=False).reset_index(drop=True)
+                  df_table.index += 1
+                  df_table.insert(0, "Rank", df_table.index)
+                  summary_tables.append(df_table)
 
-      # Sort rows by Final Elo descending
-      df_table = pd.DataFrame(rows).sort_values("Final Elo", ascending=False).reset_index(drop=True)
+                  # Display table
+                  st.markdown(f"### {param} — {level} (Month: {month}) (target CV {EFLM_TARGETS.get(param, 'n/a')})")
+                  st.dataframe(df_table)
+                  
+                  # Save rankings
+                  for _, row in df_table.iterrows():
+                      save_monthly_ranking(
+                          lab=row["Lab"],
+                          parameter=param,
+                          level=level,
+                          month=row["Month"],
+                          elo_before_bonus=row["Elo (before bonus)"],
+                          bonus=int(row["Bonus"].replace("+", "")),
+                          final_elo=row["Final Elo"],
+                          ranking=row["Rank"]
+                       )
 
-      # Assign proper rank
-      df_table.index += 1
-      df_table.insert(0, "Rank", df_table.index)
-      summary_tables.append(df_table)
-
-      # Save rankings with Elo-based rank
-      for _, row in df_table.iterrows():
-          save_monthly_ranking(
-              lab=row["Lab"],
-              parameter=param,
-              level=level,
-              month=row["Month"],
-              elo_before_bonus=row["Elo (before bonus)"],
-              bonus=int(row["Bonus"].replace("+", "")),
-              final_elo=row["Final Elo"],
-              ranking=row["Rank"]
-          )
-
-        # Display each table
-      st.markdown(f"### {param} — {level} (Month: {month}) (target CV {EFLM_TARGETS.get(param, 'n/a')})")
-      st.dataframe(df_table)
-     
-
-    # Monthly Final Ranking - Average across L1 & L2 for each parameter
-    monthly = pd.concat(summary_tables)
-
-    # Group by Lab, Test, and Month, then average across Levels (L1 & L2)
-    monthly_test_avg = monthly.groupby(["Lab", "Test", "Month"])["Final Elo"].mean().reset_index()
-
-    # Now average across all tests to get the final monthly ranking
-    monthly_final = monthly_test_avg.groupby(["Lab", "Month"])["Final Elo"].mean().reset_index()
-    
-    # For each month, calculate the rank
-    for month in monthly_final["Month"].unique():
-        month_data = monthly_final[monthly_final["Month"] == month].copy()
-        month_data = month_data.sort_values("Final Elo", ascending=False).reset_index(drop=True)
-        month_data.index += 1
-        month_data["Rank"] = month_data.index
+    if summary_tables:
+        monthly = pd.concat(summary_tables)
+        monthly_test_avg = monthly.groupby(["Lab", "Test", "Month"])["Final Elo"].mean().reset_index()
+        monthly_final = monthly_test_avg.groupby(["Lab", "Month"])["Final Elo"].mean().reset_index()
         
-        # Save to database
-        for _, row in month_data.iterrows():
-            save_monthly_final(
-                month=row["Month"],
-                lab=row["Lab"],
-                lab_rank=row["Rank"],
-                monthly_final_elo=round(row["Final Elo"], 2)
-            )
-    
-    # Display the final monthly ranking
-    st.markdown("### 🏆 Overall Monthly Ranking")
-    st.dataframe(monthly_final.pivot(index="Lab", columns="Month", values="Final Elo"))
+        # Save and display only simulated months
+        for month in months_to_process:
+            month_data = monthly_final[monthly_final["Month"] == month].copy()
+            month_data = month_data.sort_values("Final Elo", ascending=False).reset_index(drop=True)
+            month_data.index += 1
+            month_data["Rank"] = month_data.index
+            
+            for _, row in month_data.iterrows():
+                save_monthly_final(
+                    month=row["Month"],
+                    lab=row["Lab"],
+                    lab_rank=row["Rank"],
+                    monthly_final_elo=round(row["Final Elo"], 2)
+                )
+        
+        # Display final ranking (only simulated months)
+        st.markdown("### 🏆 Overall Monthly Ranking (Simulated Months)")
+        pivot_data = monthly_final.pivot(index="Lab", columns="Month", values="Final Elo")
+        st.dataframe(pivot_data)
 
     # Store results in session state for later display
     st.session_state.simulation_results = {
@@ -2876,6 +3034,451 @@ def run():
     apply_sidebar_theme()
     st.markdown("""
     <style>
+  /* Main Container */
+  .main .block-container {
+      background: linear-gradient(135deg, 
+          #1a0033 0%, 
+          #2d1b4e 25%, 
+          #4a2c7a 50%, 
+          #2d1b4e 75%, 
+          #1a0033 100%
+      );
+      min-height: 100vh;
+      padding: 2rem 1rem;
+      position: relative;
+      overflow-x: hidden;
+  }
+
+  /* Animated Background Elements */
+  .main .block-container::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: 
+          radial-gradient(circle at 20% 80%, rgba(138, 43, 226, 0.3) 0%, transparent 50%),
+          radial-gradient(circle at 80% 20%, rgba(255, 215, 0, 0.2) 0%, transparent 50%),
+          radial-gradient(circle at 40% 40%, rgba(65, 105, 225, 0.25) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: -1;
+      animation: backgroundPulse 8s ease-in-out infinite alternate;
+  }
+
+  @keyframes backgroundPulse {
+      0% { opacity: 0.7; transform: scale(1); }
+      100% { opacity: 1; transform: scale(1.05); }
+  }
+
+  /* Title Styling */
+  h1 {
+      font-family: 'Cinzel', serif !important;
+      font-size: 85px !important;
+      font-weight: 900 !important;
+      text-align: center !important;
+      background: linear-gradient(45deg, #8A2BE2, #6A0DAD, #4169E1, #8A2BE2) !important;
+      background-size: 400% 400% !important;
+      -webkit-background-clip: text !important;
+      -webkit-text-fill-color: transparent !important;
+      background-clip: text !important;
+      animation: titleGlow 3s ease-in-out infinite alternate, titleShine 4s linear infinite !important;
+      text-shadow: 0 0 30px rgba(138, 43, 226, 0.7) !important;
+      margin-bottom: 2rem !important;
+      position: relative !important;
+  }
+
+  @keyframes titleGlow {
+      0% { filter: brightness(1) drop-shadow(0 0 10px rgba(138, 43, 226, 0.8)); }
+      100% { filter: brightness(1.3) drop-shadow(0 0 25px rgba(65, 105, 225, 1)); }
+  }
+
+  @keyframes titleShine {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+  }
+
+  /* Status Messages */
+  .stAlert > div {
+      border-radius: 15px !important;
+      border: 2px solid transparent !important;
+      background: linear-gradient(135deg, rgba(138, 43, 226, 0.15), rgba(65, 105, 225, 0.1)) !important;
+      backdrop-filter: blur(10px) !important;
+      padding: 1rem 1.5rem !important;
+      font-family: 'Rajdhani', sans-serif !important;
+      font-weight: 600 !important;
+      font-size: 1.1rem !important;
+      position: relative !important;
+      overflow: hidden !important;
+      color: #e0e0ff !important;
+  }
+
+  .stAlert > div::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.3), transparent);
+      animation: shimmer 2s infinite;
+  }
+
+  @keyframes shimmer {
+      0% { left: -100%; }
+      100% { left: 100%; }
+  }
+
+  /* Success Alert */
+  div[data-testid="stAlert"][data-baseweb="notification"] > div {
+      background: linear-gradient(135deg, rgba(138, 43, 226, 0.25), rgba(75, 0, 130, 0.15)) !important;
+      border: 2px solid #8A2BE2 !important;
+      box-shadow: 0 0 20px rgba(138, 43, 226, 0.4) !important;
+  }
+
+  /* Info Alert */
+  .stAlert [role="alert"]:has([data-testid="stMarkdownContainer"]:contains("Lab View")) {
+      background: linear-gradient(135deg, rgba(65, 105, 225, 0.25), rgba(30, 144, 255, 0.15)) !important;
+      border: 2px solid #4169E1 !important;
+      box-shadow: 0 0 20px rgba(65, 105, 225, 0.4) !important;
+  }
+
+  /* Warning Alert */
+  .stAlert [role="alert"]:has([data-testid="stMarkdownContainer"]:contains("Please log in")) {
+      background: linear-gradient(135deg, rgba(255, 215, 0, 0.25), rgba(255, 165, 0, 0.15)) !important;
+      border: 2px solid #FFD700 !important;
+      box-shadow: 0 0 20px rgba(255, 215, 0, 0.4) !important;
+  }
+
+  /* Avatar Container Enhancement */
+  .avatar-container {
+      width: 100px !important;
+      height: 100px !important;
+      border-radius: 50% !important;
+      border: 1px solid #FFD700 !important;
+      overflow: hidden !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: linear-gradient(135deg, #8A2BE2 0%, #4169E1 50%, #6A5ACD 100%) !important;
+      box-shadow: 
+          0 0 25px rgba(138, 43, 226, 0.6),
+          inset 0 0 20px rgba(255, 215, 0, 0.2) !important;
+      position: relative !important;
+      animation: avatarGlow 2s ease-in-out infinite alternate !important;
+  }
+
+  .avatar-container::before {
+      content: '';
+      position: absolute;
+      top: -4px;
+      left: -4px;
+      right: -4px;
+      bottom: -4px;
+      border-radius: 50%;
+      background: linear-gradient(45deg, #FFD700, #8A2BE2, #4169E1, #FFD700);
+      background-size: 400% 400%;
+      animation: borderRotate 3s linear infinite;
+      z-index: -1;
+  }
+
+  @keyframes avatarGlow {
+      0% { box-shadow: 0 0 25px rgba(138, 43, 226, 0.6), inset 0 0 20px rgba(255, 215, 0, 0.2); }
+      100% { box-shadow: 0 0 40px rgba(65, 105, 225, 0.8), inset 0 0 30px rgba(255, 215, 0, 0.3); }
+  }
+
+  @keyframes borderRotate {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+  }
+
+  .avatar-img {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+      border-radius: 50% !important;
+  }
+
+  /* User Info Text */
+  p:contains("Logged in as") {
+      font-family: 'Rajdhani', sans-serif !important;
+      font-size: 1.2rem !important;
+      font-weight: 700 !important;
+      color: #FFD700 !important;
+      text-shadow: 0 2px 10px rgba(255, 215, 0, 0.6) !important;
+  }
+
+  /* DataFrames */
+  .stDataFrame {
+      border-radius: 15px !important;
+      overflow: hidden !important;
+      box-shadow: 0 10px 30px rgba(138, 43, 226, 0.3) !important;
+      border: 2px solid rgba(255, 215, 0, 0.4) !important;
+      background: linear-gradient(135deg, rgba(138, 43, 226, 0.1), rgba(65, 105, 225, 0.05)) !important;
+      backdrop-filter: blur(15px) !important;
+  }
+
+  .stDataFrame > div {
+      background: transparent !important;
+  }
+
+  .stDataFrame table {
+      background: linear-gradient(135deg, rgba(26, 0, 51, 0.9), rgba(45, 27, 78, 0.9)) !important;
+      border-collapse: separate !important;
+      border-spacing: 0 !important;
+  }
+
+  .stDataFrame th {
+      background: linear-gradient(135deg, #FFD700, #8A2BE2, #4169E1) !important;
+      color: #ffffff !important;
+      font-family: 'Orbitron', monospace !important;
+      font-weight: 700 !important;
+      text-align: center !important;
+      padding: 15px 10px !important;
+      border: none !important;
+      position: relative !important;
+  }
+
+  .stDataFrame th::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.8), transparent);
+  }
+
+  .stDataFrame td {
+      background: rgba(45, 27, 78, 0.8) !important;
+      color: #e0e0ff !important;
+      font-family: 'Rajdhani', sans-serif !important;
+      font-weight: 500 !important;
+      padding: 12px 10px !important;
+      border: 1px solid rgba(138, 43, 226, 0.3) !important;
+      text-align: center !important;
+      transition: all 0.3s ease !important;
+  }
+
+  .stDataFrame td:hover {
+      background: rgba(138, 43, 226, 0.2) !important;
+      color: #FFD700 !important;
+      box-shadow: inset 0 0 15px rgba(255, 215, 0, 0.3) !important;
+  }
+
+  /* Buttons */
+  .stButton > button {
+      background: linear-gradient(135deg, #4169E1 0%, #8A2BE2 50%, #4169E1 100%) !important;
+      border: 2px solid #8A2BE2 !important;
+      color: white !important;
+      font-family: 'Orbitron', monospace !important;
+      font-weight: 700 !important;
+      font-size: 1rem !important;
+      padding: 5px 10px !important;
+      transition: all 0.3s ease !important;
+      position: relative !important;
+      overflow: hidden !important;
+      text-transform: uppercase !important;
+      letter-spacing: 1px !important;
+      box-shadow: 0 5px 20px rgba(138, 43, 226, 0.5) !important;
+  }
+
+  .stButton > button::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.3), transparent);
+      transition: left 0.5s;
+  }
+
+  .stButton > button:hover::before {
+      left: 100% !important;
+  }
+
+  .stButton > button:active {
+      transform: translateY(0) !important;
+      box-shadow: 0 3px 15px rgba(138, 43, 226, 0.4) !important;
+  }
+
+  @keyframes battleButtonPulse {
+      0% { box-shadow: 0 5px 20px rgba(138, 43, 226, 0.5); }
+      100% { box-shadow: 0 8px 30px rgba(255, 215, 0, 0.8); }
+  }
+
+  /* Tabs */
+  .stTabs {
+      background: rgba(138, 43, 226, 0.1) !important;
+      border-radius: 15px !important;
+      padding: 10px !important;
+      backdrop-filter: blur(10px) !important;
+      border: 1px solid rgba(255, 215, 0, 0.4) !important;
+  }
+
+  .stTabs [data-baseweb="tab-list"] {
+      gap: 10px !important;
+  }
+
+  .stTabs [data-baseweb="tab"] {
+      background: linear-gradient(135deg, rgba(138, 43, 226, 0.2), rgba(65, 105, 225, 0.1)) !important;
+      border: 2px solid rgba(255, 215, 0, 0.4) !important;
+      border-radius: 20px !important;
+      color: #e0e0ff !important;
+      font-family: 'Rajdhani', sans-serif !important;
+      font-weight: 600 !important;
+      padding: 12px 25px !important;
+      transition: all 0.3s ease !important;
+  }
+
+  .stTabs [data-baseweb="tab"][aria-selected="true"] {
+      background: linear-gradient(135deg, #FFD700, #8A2BE2, #4169E1) !important;
+      color: #ffffff !important;
+      border-color: #FFD700 !important;
+      box-shadow: 0 5px 20px rgba(255, 215, 0, 0.5) !important;
+  }
+
+  .stTabs [data-baseweb="tab"]:hover {
+      background: linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(138, 43, 226, 0.2)) !important;
+      border-color: #8A2BE2 !important;
+     
+  }
+
+  /* Subheaders */
+  h2, h3 {
+      font-family: 'Orbitron', monospace !important;
+      background: linear-gradient(45deg, #8A2BE2, #4169E1, #6A5ACD, #8A2BE2) !important;
+      -webkit-background-clip: text !important;
+      -webkit-text-fill-color: transparent !important;
+      background-clip: text !important;
+      text-shadow: 0 2px 10px rgba(138, 43, 226, 0.6) !important;
+      border-bottom: 2px solid rgba(255, 215, 0, 0.4) !important;
+      padding-bottom: 10px !important;
+      margin-bottom: 20px !important;
+      position: relative !important;
+  }
+
+  h3::before {
+      content: '⚡';
+      margin-right: 10px !important;
+      color: #FFD700 !important;
+      animation: lightning 1.5s ease-in-out infinite alternate !important;
+  }
+
+  @keyframes lightning {
+      0% { color: #FFD700; text-shadow: 0 0 5px rgba(255, 215, 0, 0.6); }
+      100% { color: #8A2BE2; text-shadow: 0 0 15px rgba(138, 43, 226, 0.8); }
+  }
+
+  /* Countdown Styling */
+  div[style*="text-align: center"][style*="font-size: 48px"] {
+      background: linear-gradient(45deg, #8A2BE2, #4169E1, #FFD700) !important;
+      -webkit-background-clip: text !important;
+      -webkit-text-fill-color: transparent !important;
+      background-clip: text !important;
+      filter: drop-shadow(0 0 20px rgba(138, 43, 226, 0.8)) !important;
+      animation: countdownPulse 0.5s ease-in-out !important;
+  }
+
+  @keyframes countdownPulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+  }
+
+  /* Error Messages */
+  .stError > div {
+      background: linear-gradient(135deg, rgba(138, 43, 226, 0.2), rgba(75, 0, 130, 0.1)) !important;
+      border: 2px solid #8A2BE2 !important;
+      border-radius: 15px !important;
+      color: #e0e0ff !important;
+      font-family: 'Rajdhani', sans-serif !important;
+      font-weight: 600 !important;
+      box-shadow: 0 0 20px rgba(138, 43, 226, 0.4) !important;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 768px) {
+      h1 {
+          font-size: 2.5rem !important;
+      }
+
+      h1::before, h1::after {
+          display: none !important;
+      }
+
+      .avatar-container {
+          width: 80px !important;
+          height: 80px !important;
+      }
+
+      .stDataFrame {
+          font-size: 12px !important;
+      }
+
+      .stButton > button {
+          width: 100% !important;
+          margin: 5px 0 !important;
+          font-size: 0.9rem !important;
+          padding: 10px 20px !important;
+      }
+
+      .main .block-container {
+          padding: 1rem 0.5rem !important;
+      }
+  }
+
+  /* Loading Animation */
+  .stSpinner > div {
+      border-color: #8A2BE2 !important;
+      animation: loadingPulse 1s ease-in-out infinite !important;
+  }
+
+  @keyframes loadingPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+  }
+
+  /* Scrollbar Styling */
+  ::-webkit-scrollbar {
+      width: 12px !important;
+  }
+
+  ::-webkit-scrollbar-track {
+      background: linear-gradient(135deg, #1a0033, #2d1b4e) !important;
+      border-radius: 10px !important;
+  }
+
+  ::-webkit-scrollbar-thumb {
+      background: linear-gradient(135deg, #8A2BE2, #FFD700, #4169E1) !important;
+      border-radius: 10px !important;
+      border: 2px solid #1a0033 !important;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(135deg, #4169E1, #FFD700, #8A2BE2) !important;
+  }
+
+  /* Battle-themed Elements */
+  .main .block-container::after {
+      content: '⚔️ 🛡️ ⚔️';
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      font-size: 1.5rem;
+      opacity: 0.4;
+      animation: floatElements 3s ease-in-out infinite alternate;
+      pointer-events: none;
+  }
+
+  @keyframes floatElements {
+      0% { transform: translateY(0px) rotate(0deg); }
+      100% { transform: translateY(-10px) rotate(5deg); }
+  }
+
     @media (max-width: 768px) {
         .stDataFrame {
             font-size: 12px;
@@ -2891,11 +3494,39 @@ def run():
     </style>
     """, unsafe_allow_html=True)
 
-    st.title("⚔️ LLKK Battle Log")
+    st.title("⚔️ LLKK BATTLE LOG")
 
     if "logged_in_lab" not in st.session_state:
         st.warning("Please log in to access this page.")
         st.stop()
+    
+     # --- SIMULATION MONTH FILTER SECTION ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🎯 Simulation Month Selection")
+    
+    # Get available months from database
+    conn = get_db_connection()
+    months_df = pd.read_sql("SELECT DISTINCT month FROM submissions ORDER BY month", conn)
+    conn.close()
+    
+    available_months = months_df['month'].tolist()
+    
+    if not available_months:
+        st.sidebar.info("No monthly data available yet.")
+        selected_months = []
+    else:
+        # Multi-select for simulation months
+        selected_months = st.sidebar.multiselect(
+            "Select months to run simulation:",
+            options=available_months,
+            default=available_months,  # Run all months by default
+            help="Only selected months will be processed in the simulation"
+        )
+    
+    # Checkbox to run simulation on all data
+    run_all_months = st.sidebar.checkbox("Run simulation on ALL months", value=True)
+    
+    st.sidebar.markdown("---")
 
     logged_lab = st.session_state.get("logged_in_lab")
 
@@ -2971,7 +3602,7 @@ def run():
         return
 
     st.markdown("### Submitted Data")
-    st.dataframe(df)
+    st.dataframe(df, use_container_width=True, hide_index=True)
 
       # Load cached Elo history/progression if present
     if "elo_history" not in st.session_state and os.path.exists("data/elo_history.csv"):
@@ -2991,7 +3622,7 @@ def run():
 
     if role == "admin":
         st.markdown("---")
-        st.subheader("🛡️ Admin Control Panel")
+        st.subheader(" Admin Control Panel")
         
         # Use tabs for better organization
         tab1, tab2 = st.tabs(["Battle Simulation", "Battle Visualization"])
@@ -2999,7 +3630,7 @@ def run():
         with tab1:
             if st.button("🚀 Start Fadzly Battle Simulation", key="start_battle_sim"):
                 # Run simulation and set flags for countdown
-                simulate_fadzly_algorithm(df)
+                simulate_fadzly_algorithm(df, selected_months=selected_months, run_all_months=run_all_months)
                 st.session_state.battle_simulation_started = True
                 st.session_state.show_countdown = True
                 st.session_state.countdown_value = 3
@@ -3009,32 +3640,49 @@ def run():
                 for key in ["elo_history", "elo_progression", "fadzly_battles", "battle_simulation_started", "show_countdown", "countdown_value"]:
                     st.session_state.pop(key, None)
                 st.success("✅ All historical data cleared from database.")
+
+                time.sleep(2) #delay 2sec 
                 st.rerun()
         
         with tab2:
-            # Show countdown if simulation was started
-            if st.session_state.get("show_countdown", False):
-                countdown_placeholder = st.empty()
-                
-                # Countdown animation
-                for i in range(st.session_state.countdown_value, 0, -1):
-                    countdown_placeholder.markdown(f"""
-                    <div style="text-align: center; font-size: 48px; color: #ff6b6b; font-weight: bold;">
-                        {i}
-                    </div>
-                    """, unsafe_allow_html=True)
-                    time.sleep(1)
-                
-                countdown_placeholder.empty()
-                st.session_state.show_countdown = False
-                
-                run_battlelog(auto_play=True, user_role=role, user_lab=logged_lab if role != "admin" else None)
+          if st.session_state.get("show_countdown", False):
+              countdown_placeholder = st.empty()
+              
+              # Countdown animation
+              for i in range(st.session_state.countdown_value, 0, -1):
+                  countdown_placeholder.markdown(f"""
+                  <div style="text-align: center; font-size: 48px; color: #ff6b6b; font-weight: bold;">
+                      {i}
+                  </div>
+                  """, unsafe_allow_html=True)
+                  time.sleep(1)
+              
+              countdown_placeholder.empty()
+              st.session_state.show_countdown = False
+              
+              run_battlelog(
+                  auto_play=True,
+                  user_role=role,
+                  user_lab=logged_lab if role != "admin" else None,
+                  selected_months=selected_months,
+                  show_all_data=run_all_months
+              )
 
-            else:
-                run_battlelog(user_role=role, user_lab=logged_lab if role != "admin" else None)
-                
+          else:
+              run_battlelog(
+                  user_role=role,
+                  user_lab=logged_lab if role != "admin" else None,
+                  selected_months=selected_months,
+                  show_all_data=run_all_months
+              )
+
     else:
-        run_battlelog(user_role=role, user_lab=logged_lab)
+          run_battlelog(
+              user_role=role,
+              user_lab=logged_lab,
+              selected_months=selected_months,
+              show_all_data=run_all_months
+          )
 
 if __name__ == "__main__":
     run()

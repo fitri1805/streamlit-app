@@ -449,7 +449,6 @@ def apply_mlbb_theme():
     </style>
     """, unsafe_allow_html=True)
 
-# Database Connection 
 def get_db_connection():
     return mysql.connector.connect(
         host="localhost",
@@ -462,139 +461,69 @@ def is_battle_started():
     today = date.today()
     return today.day >= 15
 
-def calculate_elo_ratings():
+def get_available_months():
     conn = get_db_connection()
-    query = "SELECT * FROM submissions"
-    df = pd.read_sql(query, conn)
+    months_df = pd.read_sql("SELECT DISTINCT month FROM monthly_final ORDER BY month DESC", conn)
     conn.close()
+    return months_df['month'].tolist()
 
-    if df.empty:
+def get_previous_month(current_month=None):
+    """Calculate previous month for a given month"""
+    if not current_month:
+        current_month = datetime.now().strftime("%Y-%m")
+    
+    # Handle different month formats
+    if '-' in current_month:  # YYYY-MM format
+        year, month = map(int, current_month.split('-'))
+        if month == 1:
+            return f"{year-1}-12"
+        else:
+            return f"{year}-{month-1:02d}"
+    else:  # Month name format like 'Jan', 'Feb'
+        month_order = {'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+                      'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12}
+        current_year = datetime.now().year
+        current_month_num = month_order.get(current_month, 1)
+        
+        if current_month_num == 1:
+            return f"{current_year-1}-Dec"
+        else:
+            prev_month_num = current_month_num - 1
+            prev_month_name = list(month_order.keys())[list(month_order.values()).index(prev_month_num)]
+            return f"{current_year}-{prev_month_name}"
+
+def calculate_champion_ranking(selected_month=None):
+    """
+    Calculate champion ranking for a specific month using the continuous ELO system
+    This uses the monthly_final table which contains the final ELO after simulation
+    """
+    conn = get_db_connection()
+    
+    if selected_month:
+        # Get final rankings for the selected month
+        query = "SELECT * FROM monthly_final WHERE month = %s ORDER BY lab_rank ASC"
+        rankings_df = pd.read_sql(query, conn, params=(selected_month,))
+    else:
+        # Get the most recent month by default
+        query = "SELECT * FROM monthly_final WHERE month = (SELECT MAX(month) FROM monthly_final) ORDER BY lab_rank ASC"
+        rankings_df = pd.read_sql(query, conn)
+    
+    conn.close()
+    
+    if rankings_df.empty:
         return pd.DataFrame()
-
-    # Clean numeric inputs
-    df["CV(%)"] = pd.to_numeric(df["CV(%)"], errors="coerce")
-    df["Ratio"] = pd.to_numeric(df["Ratio"], errors="coerce")
-    df = df.dropna(subset=["n(QC)", "Working_Days"])
-
-    # Load or init rating buckets
-    ratings = {}
-    K = 32
-
-    # Penalize missing submissions
-    all_labs = df["Lab"].unique().tolist()
-    all_params = df["Parameter"].unique().tolist()
-    all_levels = df["Level"].unique().tolist()
-    all_months = df["Month"].unique().tolist()
-
-    expected_combinations = list(itertools.product(all_labs, all_params, all_levels, all_months))
-    actual_submissions = set(tuple(row) for row in df[["Lab", "Parameter", "Level", "Month"]].drop_duplicates().to_numpy())
-
-    for lab, param, level, month in expected_combinations:
-        if (lab, param, level, month) not in actual_submissions:
-            key = f"{lab}_{param}_{level}"
-            if key not in ratings:
-                ratings[key] = 1500
-            ratings[key] -= 10  # Penalty for missing submission
-
-    # Battle loop
-    for (param, level, month), group in df.groupby(["Parameter", "Level", "Month"]):
-        labs = group.to_dict("records")
-        key_prefix = f"{param}_{level}"
-
-        # Initialize ratings for labs in this group
-        for lab in group["Lab"].unique():
-            lab_key = f"{lab}_{key_prefix}"
-            if lab_key not in ratings:
-                ratings[lab_key] = 1500
-
-        # All pairings
-        for lab1, lab2 in itertools.combinations(labs, 2):
-            labA, labB = lab1["Lab"], lab2["Lab"]
-            cvA, cvB = lab1.get("CV(%)"), lab2.get("CV(%)")
-            rA, rB = lab1.get("Ratio"), lab2.get("Ratio")
-
-            labA_key = f"{labA}_{key_prefix}"
-            labB_key = f"{labB}_{key_prefix}"
-
-            # Penalties for missing values
-            penalty_A = 10 if pd.isna(cvA) or pd.isna(rA) else 0
-            penalty_B = 10 if pd.isna(cvB) or pd.isna(rB) else 0
-
-            # CV score
-            if pd.isna(cvA) and pd.isna(cvB):
-                cv_score_A = cv_score_B = 0.5
-            elif pd.isna(cvA):
-                cv_score_A, cv_score_B = 0, 1
-            elif pd.isna(cvB):
-                cv_score_A, cv_score_B = 1, 0
-            elif cvA < cvB:
-                cv_score_A, cv_score_B = 1, 0
-            elif cvA > cvB:
-                cv_score_A, cv_score_B = 0, 1
-            else:
-                cv_score_A = cv_score_B = 0.5
-
-            # Ratio metric
-            if pd.isna(rA) and pd.isna(rB):
-                ratio_score_A = ratio_score_B = 0.5
-            elif pd.isna(rA):
-                ratio_score_A, ratio_score_B = 0, 1
-            elif pd.isna(rB):
-                ratio_score_A, ratio_score_B = 1, 0
-            elif abs(rA - 1.0) < abs(rB - 1.0):  # Closer to 1.0 wins
-                ratio_score_A, ratio_score_B = 1, 0
-            elif abs(rA - 1.0) > abs(rB - 1.0):
-                ratio_score_A, ratio_score_B = 0, 1
-            else:
-                ratio_score_A = ratio_score_B = 0.5
-
-            # Composite score (equal weighting)
-            S_A = (cv_score_A + ratio_score_A) / 2
-            S_B = (cv_score_B + ratio_score_B) / 2
-
-            # ELO calculation
-            Ra, Rb = ratings[labA_key], ratings[labB_key]
-            Ea = 1 / (1 + 10 ** ((Rb - Ra) / 400))
-            Eb = 1 / (1 + 10 ** ((Ra - Rb) / 400))
-
-            ratings[labA_key] += K * (S_A - Ea)
-            ratings[labB_key] += K * (S_B - Eb)
-
-            ratings[labA_key] -= penalty_A
-            ratings[labB_key] -= penalty_B
-
-        # Apply CV + Ratio bonuses
-        for lab in group["Lab"].unique():
-            lab_key = f"{lab}_{key_prefix}"
-            cv_value = group[group["Lab"] == lab]["CV(%)"].values[0]
-            ratio_value = group[group["Lab"] == lab]["Ratio"].values[0]
-            
-            if not pd.isna(cv_value) and param in EFLM_TARGETS and cv_value <= EFLM_TARGETS[param]:
-                ratings[lab_key] += 5
-            
-            if not pd.isna(ratio_value) and ratio_value == 1.0:
-                ratings[lab_key] += 5
-
-    # Aggregate per-lab final ELO
-    lab_elos = {}
-    lab_counts = {}
-    for key, elo in ratings.items():
-        parts = key.split("_")
-        lab = "_".join(parts[:-2])
-        lab_elos[lab] = lab_elos.get(lab, 0) + elo
-        lab_counts[lab] = lab_counts.get(lab, 0) + 1
-
-    summary_df = pd.DataFrame([{
-        "Lab": lab,
-        "Final Elo": round(lab_elos[lab] / lab_counts[lab], 2),
-    } for lab in lab_elos]).sort_values(by="Final Elo", ascending=False).reset_index(drop=True)
-
+    
+    # Create the champion ranking
+    champion_df = rankings_df[['lab', 'monthly_final_elo', 'lab_rank']].copy()
+    champion_df.columns = ['Lab', 'Final Elo', 'Rank']
+    
+    # Add medals
     medals = ["🥇", "🥈", "🥉"]
-    summary_df["Medal"] = ""
-    for i in range(min(3, len(summary_df))):
-        summary_df.loc[i, "Medal"] = medals[i]
-
-    return summary_df
+    champion_df["Medal"] = ""
+    for i in range(min(3, len(champion_df))):
+        champion_df.loc[i, "Medal"] = medals[i]
+    
+    return champion_df
 
 # Avatar names
 def get_avatar_names():
@@ -605,6 +534,46 @@ def get_avatar_names():
     conn.close()
     
     return {row['username']: row['avatar'] for row in rows}
+
+def get_lab_ratings_progression(lab_name):
+    """Get ELO progression for a specific lab from battle logs"""
+    conn = get_db_connection()
+    
+    
+    query = """
+    SELECT * FROM battle_logs 
+    WHERE lab_a = %s OR lab_b = %s 
+    ORDER BY CAST(round_num AS UNSIGNED) ASC
+    """
+    prog_df = pd.read_sql(query, conn, params=(lab_name, lab_name))
+    conn.close()
+    
+    if prog_df.empty:
+        return pd.DataFrame()
+    
+
+    progression = []
+    battle_count = 0
+    
+    for _, battle in prog_df.iterrows():
+        battle_count += 1
+        
+        if battle['lab_a'] == lab_name:
+            elo = battle['updated_rating_a']
+            opponent = battle['lab_b']
+        else:
+            elo = battle['updated_rating_b']
+            opponent = battle['lab_a']
+        
+        progression.append({
+            'Battle': battle_count,
+            'Elo': elo,
+            'Opponent': opponent,
+            'Round': battle['round_num'],
+            'Month': battle.get('month', 'Unknown')
+        })
+    
+    return pd.DataFrame(progression)
 
 def run():
     apply_mlbb_theme()
@@ -651,49 +620,73 @@ def run():
     </div>
     """, unsafe_allow_html=True)
     
-    avatar_map = get_avatar_names()
-    elo_df = calculate_elo_ratings()
+    # Month selection
+    available_months = get_available_months()
+    
+    if not available_months:
+        st.error("""
+        ⚠️ No battle data available yet! 
 
-    if elo_df.empty:
-        st.error("⚠️ The battle records are empty. Warriors must first register their deeds in the Data Entry realm.")
+        """)
         return
-
-    # Replace lab names with avatar names
-    leaderboard_df = elo_df.copy()
+    
+    # Month selection with better UI
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        selected_month = st.selectbox(
+            "🎯 Select Month to Display", 
+            available_months,
+        )
+    
+    with col2:
+        # Show month info
+        if selected_month:
+            st.info(f"📅 Showing: **{selected_month}**")
+    
+    # Get avatar mapping
+    avatar_map = get_avatar_names()
+    
+    # Calculate champion ranking for selected month
+    champion_df = calculate_champion_ranking(selected_month)
+    
+    if champion_df.empty:
+        st.error(f"⚠️ No champion data available for {selected_month}")
+        return
+    
+    # Create leaderboard with all necessary columns preserved
+    leaderboard_df = champion_df.copy()
     leaderboard_df["Avatar"] = leaderboard_df["Lab"].map(avatar_map)
-    leaderboard_df = leaderboard_df[["Avatar", "Final Elo", "Medal"]]
-    leaderboard_df = leaderboard_df.sort_values("Final Elo", ascending=False).reset_index(drop=True)
-
-    # Add rank column
-    leaderboard_df["Rank"] = leaderboard_df.index + 1
-    leaderboard_df = leaderboard_df[["Rank", "Avatar", "Final Elo", "Medal"]]
+    leaderboard_df["Avatar"] = leaderboard_df["Avatar"].fillna(leaderboard_df["Lab"])  
+    
+    # Reorder columns for display (but keep Lab column for reference)
+    display_df = leaderboard_df[["Rank", "Avatar", "Final Elo", "Medal"]]
     
     st.markdown("## 🏅 Hall of Champions")
     
     # Format the DataFrame for better display
-    styled_df = leaderboard_df.style \
-    .format({"Final Elo": "{:.2f}"}) \
-    .set_properties(**{
-        'background-color': 'rgba(15, 20, 40, 0.7)',
-        'color': '#f8f9ff',
-        'border': '1px solid rgba(255, 255, 255, 0.1)',
-        'text-align': 'center'
-    }) \
-    .set_table_styles([{
-        'selector': 'th',
-        'props': [('background', 'linear-gradient(135deg, #4a00e0 0%, #ff4d8d 100%)'),
-                 ('color', 'white'),
-                 ('font-family', "'Orbitron', monospace"),
-                 ('font-weight', '700'),
-                 ('text-transform', 'uppercase'),
-                 ('text-align', 'center')]
-    }])
-
+    styled_df = display_df.style \
+        .format({"Final Elo": "{:.2f}"}) \
+        .set_properties(**{
+            'background-color': 'rgba(15, 20, 40, 0.7)',
+            'color': '#f8f9ff',
+            'border': '1px solid rgba(255, 255, 255, 0.1)',
+            'text-align': 'center'
+        }) \
+        .set_table_styles([{
+            'selector': 'th',
+            'props': [('background', 'linear-gradient(135deg, #4a00e0 0%, #ff4d8d 100%)'),
+                     ('color', 'white'),
+                     ('font-family', "'Orbitron', monospace"),
+                     ('font-weight', '700'),
+                     ('text-transform', 'uppercase'),
+                     ('text-align', 'center')]
+        }])
     
-    st.dataframe(styled_df, use_container_width=True, height=(len(leaderboard_df) + 1) * 35 + 3)
+    st.dataframe(styled_df, use_container_width=True, height=(len(display_df) + 1) * 35 + 3)
 
     # Champion announcement with enhanced styling
-    champ_row = leaderboard_df.iloc[0]
+    champ_row = display_df.iloc[0]
     st.markdown(f"""
     <div class="champion-card">
         <h2>👑 CHAMPION OF THE REALM 👑</h2>
@@ -706,7 +699,7 @@ def run():
     </div>
     """, unsafe_allow_html=True)
 
-    # ELO progression chart with MLBB styling
+    # ELO progression chart 
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -719,44 +712,64 @@ def run():
 
         if not prog_df.empty:
             st.markdown("## 📈 Warrior's Journey")
-            # Create mapping for dropdown - show avatar names but store lab names
+            
             lab_options = {}
             for lab in set(prog_df["lab_a"]).union(set(prog_df["lab_b"])):
                 lab_options[avatar_map.get(lab, lab)] = lab
             
             selected_avatar = st.selectbox("Select Avatar", list(lab_options.keys()))
             selected_lab = lab_options[selected_avatar]
-            
-            # Melt both labs A/B into one long df
+
             prog_long = pd.concat([
-                prog_df[["id", "lab_a", "updated_rating_a"]].rename(
+                prog_df[["id", "lab_a", "updated_rating_a", "month"]].rename(
                     columns={"lab_a": "Lab", "updated_rating_a": "Elo"}
                 ),
-                prog_df[["id", "lab_b", "updated_rating_b"]].rename(
+                prog_df[["id", "lab_b", "updated_rating_b", "month"]].rename(
                     columns={"lab_b": "Lab", "updated_rating_b": "Elo"}
                 )
             ])
-            prog_long["Battle"] = prog_long["id"]
+            prog_long["Month"] = prog_long["month"]
             
             filtered = prog_long[prog_long["Lab"] == selected_lab]
             
             if not filtered.empty:
-                # Replace lab name with avatar name in chart title
-                chart = alt.Chart(filtered).mark_line(point=True).encode(
-                    x=alt.X("Battle:O", title="Battle Number"),
-                    y=alt.Y("Elo:Q", title="Elo Score"),
-                    tooltip=["Battle", "Elo"]
+                chart = alt.Chart(filtered).mark_line(
+                    color="#518ee4",
+                    strokeWidth=3
+                ).encode(
+                    x=alt.X("Month:N", title="Month", axis=alt.Axis(labelAngle=0)),
+                    y=alt.Y("Elo:Q", title="Elo Score", scale=alt.Scale(zero=False)),
+                    tooltip=["Month", "Elo"]
                 ).properties(
-                    title=f"{selected_avatar} — Elo Progression",
+                    title={
+                        "text": f"{selected_avatar} — Elo Progression",
+                        "fontSize": 26,
+                        "font": "Cinzel",
+                        "anchor": "middle",
+                        "color": "#ffd700",
+                    },
                     width=700,
                     height=400
+                ).configure_axis(
+                    gridColor='rgba(255, 255, 255, 0.1)',
+                    domainColor='#ff4d8d',
+                    labelColor='#f8f9ff',
+                    titleColor="#ffd700"
+                ).configure_view(
+                    strokeWidth=0,
+                    fill='rgba(15, 20, 40, 0)'
                 )
+                
                 st.altair_chart(chart, use_container_width=True)
             else:
                 st.info("ℹ️ No rating data available for this avatar.")
+        else:
+            conn.close()
+            st.info("ℹ️ No battle logs available yet.")
     else:
         conn.close()
         st.info("ℹ️ No battle logs available yet.")
+
 
 if __name__ == "__main__":
     run()
