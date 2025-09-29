@@ -86,10 +86,11 @@ def file_to_data_uri(path: str) -> str:
 # Database Connection
 def get_db_connection():
     return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="123",
-        database="gamifiedqc"
+        host="137.59.109.94",
+        port=3306,
+        user="alfadiagno22_gamifiedqc",
+        password="Cittamall13_",         
+        database="alfadiagno22_gamifiedqc"
     )
 
 def fetch_lab_data(lab=None):

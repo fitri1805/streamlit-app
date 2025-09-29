@@ -451,10 +451,11 @@ def apply_mlbb_theme():
 
 def get_db_connection():
     return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="123",
-        database="gamifiedqc"
+        host="137.59.109.94",
+        port=3306,
+        user="alfadiagno22_gamifiedqc",
+        password="Cittamall13_",         
+        database="alfadiagno22_gamifiedqc"
     )
 
 def is_battle_started():
