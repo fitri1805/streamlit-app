@@ -22,8 +22,6 @@ def get_connection():
 #    today = date.today()
 #    return 1 <= today.day <= 14
 
-
-# Function to count submissions for the current month
 def count_current_month_submissions(lab):
     today = date.today()
     current_month = today.month
@@ -44,7 +42,6 @@ def count_current_month_submissions(lab):
     
     return count
 
-# Function to check if all required parameters are submitted
 def check_required_parameters(lab):
     today = date.today()
     current_month = today.month
@@ -58,7 +55,6 @@ def check_required_parameters(lab):
     submitted_df = pd.read_sql(query, conn, params=[lab, current_month, current_year])
     conn.close()
     
-    # Define all required parameters
     all_parameters = sorted([
         "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
         "Creatinine", "Direct Bilirubin", "GGT", "Glucose", "HDL Cholesterol",
@@ -108,7 +104,6 @@ def check_existing_parameter_month(lab, parameter, month, level=None):
     
     return count
 
-# Function to get ratio for a parameter in a specific month
 def get_parameter_ratio(lab, parameter, month):
     today = date.today()
     current_year = today.year
@@ -127,11 +122,17 @@ def get_parameter_ratio(lab, parameter, month):
         return df.iloc[0]['Ratio']
     return None
 
+def validate_ratio(n_qc, wd, parameter, level, month):
+    if n_qc > 0 and wd > 0:
+        ratio = n_qc / wd
+        if ratio < 1:
+            return f"Ratio for {parameter} - {level} in {month} must be ≥ 1"
+    return None
+
 # Function to check if both levels are submitted for parameters
 def validate_both_levels_submitted(input_data):
     errors = []
     
-    # Group by parameter and month to check levels
     parameter_month_groups = {}
     
     for data in input_data:
@@ -139,8 +140,7 @@ def validate_both_levels_submitted(input_data):
         if key not in parameter_month_groups:
             parameter_month_groups[key] = set()
         parameter_month_groups[key].add(data['Level'])
-    
-    # Check each parameter-month combination
+   
     for key, levels in parameter_month_groups.items():
         parameter, month = key.split('_')
         if len(levels) == 1:
@@ -190,7 +190,147 @@ def run():
     apply_sidebar_theme()
     st.markdown("""
     <style>
+    /* MLBB Color Palette */
+    :root {
+        --mlbb-primary: #ff4d8d;
+        --mlbb-secondary: #4a00e0;
+        --mlbb-accent: #ff9a8b;
+        --mlbb-gold: #ffd700;
+        --mlbb-silver: #c0c0c0;
+        --mlbb-bronze: #cd7f32;
+        --mlbb-dark: #0a0f1e;
+        --mlbb-darker: #070a14;
+        --mlbb-light: #f8f9ff;
+        --mlbb-gradient: linear-gradient(135deg, var(--mlbb-secondary) 0%, var(--mlbb-primary) 100%);
+        --mlbb-glow: 0 0 20px rgba(255, 77, 141, 0.6);
+        --mlbb-border-radius: 16px;
+        --mlbb-transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+        --mlbb-card-bg: rgba(15, 20, 40, 0.85);
+        --mlbb-card-border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+                
+    h1 {
+        font-family: 'Cinzel', serif !important;
+        font-size: 67px !important;
+        font-weight: 900 !important;
+        text-align: center !important;
+        background: linear-gradient(45deg, #8A2BE2, #6A0DAD, #4169E1, #8A2BE2) !important;
+        background-size: 400% 400% !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        background-clip: text !important;
+        animation: titleGlow 3s ease-in-out infinite alternate, titleShine 4s linear infinite !important;
+        text-shadow: 0 0 30px rgba(138, 43, 226, 0.7) !important;
+        margin-bottom: 2rem !important;
+        position: relative !important;
+        }
     
+    h2, h3 {
+        font-family: 'Orbitron', monospace !important;
+        background: linear-gradient(45deg, #8A2BE2, #6A0DAD, #4169E1, #8A2BE2) !important;
+        background-size: 300% 300% !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        background-clip: text !important;
+        animation: titleShine 3s linear infinite !important;
+        text-shadow: 0 2px 10px rgba(138, 43, 226, 0.6) !important;
+        border-bottom: 2px solid rgba(255, 215, 0, 0.4) !important;
+        padding-bottom: 10px !important;
+        margin: 20px 0 !important;
+        position: relative !important;
+        }
+                
+    h3::before {
+        content: '⚡';
+        margin-right: 10px !important;
+        color: #FFD700 !important;
+        animation: lightning 1.5s ease-in-out infinite alternate !important;
+        }
+
+    @keyframes lightning {
+        0% { color: #FFD700; text-shadow: 0 0 5px rgba(255, 215, 0, 0.6); }
+        100% { color: #FF1493; text-shadow: 0 0 15px rgba(255, 20, 147, 0.8); }
+        }
+    
+    /* Status Messages - Success */
+        .stAlert[data-baseweb="notification"] > div {
+            border-radius: 15px !important;
+            border: 2px solid transparent !important;
+            backdrop-filter: blur(10px) !important;
+            padding: 1rem 1.5rem !important;
+            font-family: 'Rajdhani', sans-serif !important;
+            font-weight: 600 !important;
+            font-size: 1.1rem !important;
+            position: relative !important;
+            overflow: hidden !important;
+            animation: slideIn 0.5s ease-out !important;
+        }
+    
+    /* Success Alert */
+    div[data-testid="stAlert"][class*="success"] {
+        background: linear-gradient(135deg, rgba(138, 43, 226, 0.25), rgba(75, 0, 130, 0.15)) !important;
+        border: 2px solid #8A2BE2 !important;
+        box-shadow: 0 0 20px rgba(138, 43, 226, 0.4) !important;
+        color: #e0ffe0 !important;
+    }
+    
+   .stButton > button {
+        background: var(--mlbb-gradient) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 10px !important;
+        font-family: 'Orbitron', monospace !important;
+        font-weight: 700 !important;
+        font-size: 1rem !important;
+        padding: 10px 20px !important;
+        transition: var(--mlbb-transition) !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
+        box-shadow: 0 4px 20px rgba(255, 77, 141, 0.3) !important;
+        position: relative !important;
+        overflow: hidden !important;
+    }
+
+    .stButton > button::before {
+        content: '' !important;
+        position: absolute !important;
+        top: 0 !important;
+        left: -100% !important;
+        width: 100% !important;
+        height: 100% !important;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent) !important;
+        transition: left 0.5s ease !important;
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-3px) scale(1.05) !important;
+        box-shadow: var(--mlbb-glow), 0 8px 30px rgba(0, 0, 0, 0.3) !important;
+    }
+
+    .stButton > button:hover::before {
+        left: 100% !important;
+    }
+
+    .stButton > button:active {
+        transform: translateY(-1px) scale(1.02) !important;
+    }
+
+    /* Download Button Special Styling */
+    .stDownloadButton > button {
+        background: linear-gradient(135deg, var(--mlbb-gold) 0%, #ffaa00 100%) !important;
+        color: var(--mlbb-dark) !important;
+        box-shadow: 0 4px 20px rgba(255, 215, 0, 0.4) !important;
+    }
+
+    .stDownloadButton > button:hover {
+        box-shadow: 0 0 25px rgba(255, 215, 0, 0.8), 0 8px 30px rgba(0, 0, 0, 0.3) !important;
+    }
+
+    @keyframes buttonPulse {
+        0% { box-shadow: 0 5px 20px rgba(255, 215, 0, 0.5); }
+        100% { box-shadow: 0 8px 30px rgba(255, 20, 147, 0.8); }
+    }
+                
     @media (max-width: 768px) {
         .stDataFrame {
             font-size: 12px;
@@ -206,7 +346,7 @@ def run():
     </style>
     """, unsafe_allow_html=True)
     
-    st.title("📋 LLKK Direct Data Entry")
+    st.title("📋 LLKK DIRECT DATA ENTRY")
 
     if "logged_in_lab" not in st.session_state:
         st.warning("Please log in from the sidebar to access data entry.")
@@ -220,12 +360,9 @@ def run():
     #    st.info("The battle begins on the 15th. Please come back next month for data submission.")
     #    st.stop()
     
-
-    # Show submission status in a cleaner way
     submission_count = count_current_month_submissions(lab)
     missing_params = check_required_parameters(lab)
     
-    # Create a status indicator with expandable details
     status_col1, status_col2 = st.columns([1, 3])
     with status_col1:
         if submission_count == 34 and not missing_params:
@@ -238,18 +375,16 @@ def run():
         #days_left = 14 - today.day
         #st.info(f"📅 Submission window: 1st-14th ({days_left} days left)")
     
-    # Expandable section for missing parameters
     if missing_params:
         with st.expander("Show missing parameters", expanded=False):
             st.warning("⚠️ Missing submissions for:")
             for param in missing_params:
                 st.write(f"- {param}")
 
-    # Get all submissions for this lab (for filter)
+   
     all_submissions_df = get_all_submissions(lab)
     
-    # Add filter options for viewing data
-    st.subheader("📂 Previously Submitted Data")
+    st.subheader("Previously Submitted Data")
     
     # filter options
     filter_col1, filter_col2 = st.columns(2)
@@ -257,7 +392,6 @@ def run():
         view_option = st.radio("Filter by:", 
                               ["Current month", "All time", "Specific month"])
     
-    # Filter data based on selection
     if view_option == "Current month":
         today = date.today()
         current_month = today.month
@@ -306,7 +440,6 @@ def run():
         view_df = pd.read_sql(query, conn, params=[lab, month_text, int(year)])
         conn.close()
 
-    # Initialize edit mode if not set
     if "edit_mode" not in st.session_state:
         st.session_state.edit_mode = False
 
@@ -326,13 +459,12 @@ def run():
 
     st.dataframe(view_df)
 
-    # Add delete mode 
+   
     if st.session_state.get("delete_mode", False):
         if st.button("← Back to Data Entry"):
             st.session_state.delete_mode = False
             st.rerun()
         
-        # Fetch all parameters and levels for this lab in current month
         today = date.today()
         current_month = today.month
         current_year = today.year
@@ -349,11 +481,9 @@ def run():
         if params_df.empty:
             st.error("No records found for deletion.")
         else:
-            # Select parameter to delete
             parameters = sorted(params_df['Parameter'].unique())
             selected_param = st.selectbox("Select Parameter", parameters, key="delete_param")
             
-            # Select level based on chosen parameter
             available_levels = params_df[params_df['Parameter'] == selected_param]['Level'].unique()
             selected_level = st.selectbox("Select Level", available_levels, key="delete_level")
             
@@ -406,7 +536,6 @@ def run():
 
    
     if st.session_state.get("edit_mode", False):
-        # Fetch all parameters and levels for this lab in current month
         today = date.today()
         current_month = today.month
         current_year = today.year
@@ -441,14 +570,12 @@ def run():
             if records_df.empty:
                 st.error("No records found for the selected parameter and level.")
             else:
-                # Display the records and allow editing
                 st.subheader(f"Editing {selected_param} - {selected_level}")
                 
-                # Create a form for editing
+             
                 with st.form("edit_form"):
                     updated_data = []
                     
-                    # Get all available parameters and levels for the dropdowns
                     all_parameters = sorted([
                     "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
                     "Creatinine", "Direct Bilirubin", "GGT", "Glucose", "HDL Cholesterol",
@@ -456,11 +583,12 @@ def run():
                     "Triglycerides", "Urea", "Uric Acid"
                     ])
                     all_levels = ["L1", "L2"]
-                
+                    
+                    edit_validation_errors = []
+
                     for idx, record in records_df.iterrows():
                         st.markdown(f"**Record {idx+1}**")
 
-                         # Allow editing Parameter
                         new_param = st.selectbox(
                             "Parameter", 
                             all_parameters,
@@ -468,7 +596,6 @@ def run():
                             key=f"param_{record['id']}"
                         )
                     
-                        # Allow editing Level
                         new_level = st.selectbox(
                             "Level", 
                             all_levels,
@@ -476,7 +603,6 @@ def run():
                             key=f"level_{record['id']}"
                         )
                         
-                        # Get month value
                         month = st.selectbox(
                             "Month", 
                             ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
@@ -510,6 +636,10 @@ def run():
                             key=f"wd_{record['id']}"
                         )
                         
+                        ratio_error = validate_ratio(n_qc, wd, new_param, new_level, month)
+                        if ratio_error:
+                            edit_validation_errors.append(ratio_error)
+                        
                         ratio = round(n_qc / wd, 2) if n_qc > 0 and wd > 0 else 0.0
                         st.number_input("Ratio", value=ratio, disabled=True, key=f"ratio_{record['id']}")
                         
@@ -524,14 +654,19 @@ def run():
                             "ratio": ratio
                         })
                     
+                    if edit_validation_errors:
+                        st.error("🚫 Ratio Validation Errors:")
+                        for error in edit_validation_errors:
+                            st.write(f"- {error}")
+                    
                     col1, col2 = st.columns(2)
                     with col1:
-                        update_submitted = st.form_submit_button("Update Records")
+                        update_submitted = st.form_submit_button("Update Records", disabled=bool(edit_validation_errors))
                     with col2:
                         cancel_edit = st.form_submit_button("Cancel Edit")
                     
-                    if update_submitted:
-                        # Update records in database
+                    if update_submitted and not edit_validation_errors:
+                       
                         conn = get_connection()
                         cursor = conn.cursor()
                         
@@ -553,7 +688,6 @@ def run():
                         conn.close()
                         
                         st.success("✅ Records updated successfully!")
-                        # Clear edit mode
                         st.session_state.edit_mode = False
                         
                         countdown_placeholder = st.empty()
@@ -564,14 +698,12 @@ def run():
                         st.rerun()
                     
                     if cancel_edit:
-                        # Clear edit mode
                         st.session_state.edit_mode = False
                         st.rerun()
 
     
     if not st.session_state.edit_mode:
-        
-        # Data input section
+    
         parameters = sorted([
             "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
             "Creatinine", "Direct Bilirubin", "GGT", "Glucose", "HDL Cholesterol",
@@ -584,10 +716,11 @@ def run():
 
         num_rows = st.number_input("🔢 How many entries to input?", min_value=1, max_value=50, value=5, step=1)
 
-        st.subheader(f"📝 Enter Data for: :green[{lab}]")
+        st.subheader(f"Enter Data for: :green[{lab}]")
 
         input_data = []
         validation_errors = []
+        seen_ratio_errors = set()
         
         for i in range(num_rows):
             cols = st.columns(7)
@@ -597,18 +730,27 @@ def run():
             cv = cols[3].number_input("CV(%)", min_value=0.0, max_value=100.0, key=f"cv_{i}")
             n_qc = cols[4].number_input("n(QC)", min_value=0, max_value=100, key=f"n_{i}")
             wd = cols[5].number_input("Working_Days", min_value=1, max_value=31, key=f"wd_{i}")
+            
+            # Calculate ratio and validate
             ratio = round(n_qc / wd, 2) if n_qc > 0 and wd > 0 else 0.0
+            
+            ratio_error = validate_ratio(n_qc, wd, parameter, level, month)
+            if ratio_error:
+                validation_errors.append(ratio_error)
+            
             cols[6].number_input("Ratio", value=ratio, disabled=True, key=f"ratio_{i}")
 
-            # Check for duplicate parameter-month-level combination
+            # Check duplicate parameter-month-level 
             existing_count = check_existing_parameter_month(lab, parameter, month, level)
             if existing_count > 0:
-                validation_errors.append(f"Row {i+1}: {parameter} - {level} for {month} already exists!")
+                validation_errors.append(f" {parameter} - {level} for {month} already exists!")
             
-            # Check ratio consistency for the same parameter and month
+            # Check ratio consistency 
             existing_ratio = get_parameter_ratio(lab, parameter, month)
             if existing_ratio is not None and ratio != existing_ratio:
-                validation_errors.append(f"Row {i+1}: Ratio for {parameter} in {month} must be {existing_ratio} (same as existing data)!")
+                if (parameter, month) not in seen_ratio_errors:
+                    validation_errors.append(f"Ratio for {parameter} in {month} must be the same for both levels!")
+                    seen_ratio_errors.add((parameter, month))
 
             input_data.append({
                 "Lab": lab,
@@ -621,23 +763,25 @@ def run():
                 "Ratio": ratio
             })
 
-        df = pd.DataFrame(input_data)
-        df = df[(df["CV(%)"] > 0) & (df["n(QC)"] > 0) & (df["Working_Days"] > 0)]
-
-        # Check if both levels are submitted for each parameter
-        level_errors = validate_both_levels_submitted(input_data)
-        validation_errors.extend(level_errors)
-
-        st.subheader("📊 Preview of Valid Entries")
-        st.dataframe(df)
+        df = pd.DataFrame()
+        for data in input_data:
+            if data["n(QC)"] > 0 and data["Working_Days"] > 0:
+                ratio = data["n(QC)"] / data["Working_Days"]
+                if ratio >= 1:
+                    df = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
         
-        # Display validation errors
+        st.subheader("Preview of Valid Entries")
+        if not df.empty:
+            st.dataframe(df)
+        else:
+            st.info("No valid entries with ratio ≥ 1")
+        
+        
         if validation_errors:
             st.error("🚫 Validation Errors:")
             for error in validation_errors:
                 st.write(f"- {error}")
         
-        # Download button for submitted data
         if not view_df.empty:
             csv_data = view_df.to_csv(index=False).encode('utf-8')
             st.download_button(
@@ -656,15 +800,13 @@ def run():
             st.session_state[submission_key] = False
 
         if not st.session_state[submission_key]:
-            if st.button("💾 Submit to battle"):
-                # Check for validation errors before submission
+            if st.button("💾 Submit to battle", disabled=bool(validation_errors)):
                 if validation_errors:
                     st.error("🚫 Please fix validation errors before submitting!")
                     st.session_state[submission_key] = False
                 else:
                     st.session_state[submission_key] = True  
                     if not df.empty:
-                        # Final check for both levels
                         final_level_errors = validate_both_levels_submitted(input_data)
                         if final_level_errors:
                             st.error("🚫 Level submission errors:")
