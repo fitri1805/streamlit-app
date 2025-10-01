@@ -42,6 +42,7 @@ def count_current_month_submissions(lab):
     
     return count
 
+@st.cache_data(ttl=30)
 def check_required_parameters(lab):
     today = date.today()
     current_month = today.month
@@ -457,7 +458,7 @@ def run():
             st.session_state.delete_lab = lab
             st.rerun()
 
-    st.dataframe(view_df)
+    st.dataframe(view_df,hide_index=True)
 
    
     if st.session_state.get("delete_mode", False):

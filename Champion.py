@@ -6,6 +6,10 @@ import itertools
 import numpy as np
 from datetime import datetime, date
 from Login import apply_sidebar_theme
+import base64
+import os
+from pathlib import Path
+import mimetypes
 
 # EFLM Targets 
 EFLM_TARGETS = {
@@ -93,7 +97,6 @@ def apply_mlbb_theme():
         100% { text-shadow: 0 0 40px rgba(255, 77, 141, 1), 0 0 60px rgba(74, 0, 224, 0.8); }
     }
 
-    /* Section Headers - Exclude sidebar */
     .stApp h1:not(.stSidebar *), 
     .stApp h2:not(.stSidebar *), 
     .stApp h3:not(.stSidebar *) {
@@ -116,7 +119,6 @@ def apply_mlbb_theme():
         color: var(--mlbb-gold);
     }
 
-    /* Cards and Containers - Exclude sidebar */
     .stApp .element-container:not(.stSidebar *),
     .stApp .stDataFrame:not(.stSidebar *),
     .stApp .stSelectbox:not(.stSidebar *),
@@ -132,7 +134,6 @@ def apply_mlbb_theme():
         position: relative;
         overflow: hidden;
     }
-                
 
     /* Card Hover Effects */
     .stApp .element-container:not(.stSidebar *):hover,
@@ -462,6 +463,7 @@ def is_battle_started():
     today = date.today()
     return today.day >= 15
 
+@st.cache_data(ttl=30)
 def get_available_months():
     conn = get_db_connection()
     months_df = pd.read_sql("SELECT DISTINCT month FROM monthly_final ORDER BY month DESC", conn)
@@ -473,7 +475,6 @@ def get_previous_month(current_month=None):
     if not current_month:
         current_month = datetime.now().strftime("%Y-%m")
     
-    # Handle different month formats
     if '-' in current_month:  # YYYY-MM format
         year, month = map(int, current_month.split('-'))
         if month == 1:
@@ -505,7 +506,6 @@ def calculate_champion_ranking(selected_month=None):
         query = "SELECT * FROM monthly_final WHERE month = %s ORDER BY lab_rank ASC"
         rankings_df = pd.read_sql(query, conn, params=(selected_month,))
     else:
-        # Get the most recent month by default
         query = "SELECT * FROM monthly_final WHERE month = (SELECT MAX(month) FROM monthly_final) ORDER BY lab_rank ASC"
         rankings_df = pd.read_sql(query, conn)
     
@@ -514,11 +514,9 @@ def calculate_champion_ranking(selected_month=None):
     if rankings_df.empty:
         return pd.DataFrame()
     
-    # Create the champion ranking
     champion_df = rankings_df[['lab', 'monthly_final_elo', 'lab_rank']].copy()
     champion_df.columns = ['Lab', 'Final Elo', 'Rank']
     
-    # Add medals
     medals = ["🥇", "🥈", "🥉"]
     champion_df["Medal"] = ""
     for i in range(min(3, len(champion_df))):
@@ -526,7 +524,73 @@ def calculate_champion_ranking(selected_month=None):
     
     return champion_df
 
-# Avatar names
+AVATAR_NAME_TO_PATH = {
+    "Zareth": "avatars/zareth.png",
+    "Dreadon": "avatars/Dreadon.png",
+    "Selindra": "avatars/Selindra.png",
+    "Raviel": "avatars/Raviel.png",
+    "Takeshi": "avatars/Takeshi.png",
+    "Synkro": "avatars/Synkro.png",
+    "Zyphira": "avatars/Zyphira.png",
+    "Umbra": "avatars/Umbra.png",
+}
+DEFAULT_AVATAR = "avatars/default.png"
+
+def resolve_avatar_path(value: str) -> str:
+    if not value:
+        return DEFAULT_AVATAR
+
+    if value in AVATAR_NAME_TO_PATH:
+        candidate = AVATAR_NAME_TO_PATH[value]
+    else:
+        if not any(sep in value for sep in ("/", "\\")) and value.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+            candidate = f"avatars/{value}"
+        else:
+            candidate = value
+
+    if os.path.exists(candidate):
+        return candidate
+
+    try_paths = []
+    try:
+        here = Path(__file__).resolve().parent
+        project_root = here.parent
+        try_paths.append(project_root / candidate)
+        try_paths.append(here / candidate)
+    except Exception:
+        pass
+
+    for p in try_paths:
+        if p.exists():
+            return str(p)
+
+    return DEFAULT_AVATAR if os.path.exists(DEFAULT_AVATAR) else candidate
+
+def file_to_data_uri(path: str) -> str:
+    resolved = resolve_avatar_path(path)
+    mime, _ = mimetypes.guess_type(resolved)
+    mime = mime or "image/png"
+    with open(resolved, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("ascii")
+    return f"data:{mime};base64,{b64}"
+
+@st.cache_data(ttl=60)
+def get_avatar_data_uri_map():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT username, avatar FROM labs_users")
+    rows = cursor.fetchall()
+    conn.close()
+
+    out = {}
+    for row in rows:
+        avatar_value = row["avatar"] or DEFAULT_AVATAR
+        try:
+            out[row["username"]] = file_to_data_uri(avatar_value)
+        except Exception:
+            out[row["username"]] = file_to_data_uri(DEFAULT_AVATAR)
+    return out
+
 def get_avatar_names():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -537,10 +601,8 @@ def get_avatar_names():
     return {row['username']: row['avatar'] for row in rows}
 
 def get_lab_ratings_progression(lab_name):
-    """Get ELO progression for a specific lab from battle logs"""
     conn = get_db_connection()
-    
-    
+
     query = """
     SELECT * FROM battle_logs 
     WHERE lab_a = %s OR lab_b = %s 
@@ -552,7 +614,6 @@ def get_lab_ratings_progression(lab_name):
     if prog_df.empty:
         return pd.DataFrame()
     
-
     progression = []
     battle_count = 0
     
@@ -580,7 +641,6 @@ def run():
     apply_mlbb_theme()
     apply_sidebar_theme()
     
-    # Main title 
     st.markdown("""
     <div class="main-title">
         ⚔️ LLKK CHAMPION BOARD ⚔️
@@ -620,8 +680,7 @@ def run():
         <p>Victory has been claimed and a new champion rises!</p>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Month selection
+
     available_months = get_available_months()
     
     if not available_months:
@@ -631,7 +690,6 @@ def run():
         """)
         return
     
-    # Month selection with better UI
     col1, col2 = st.columns([3, 1])
     
     with col1:
@@ -641,31 +699,25 @@ def run():
         )
     
     with col2:
-        # Show month info
         if selected_month:
             st.info(f"📅 Showing: **{selected_month}**")
     
-    # Get avatar mapping
     avatar_map = get_avatar_names()
-    
-    # Calculate champion ranking for selected month
+ 
     champion_df = calculate_champion_ranking(selected_month)
     
     if champion_df.empty:
         st.error(f"⚠️ No champion data available for {selected_month}")
         return
     
-    # Create leaderboard with all necessary columns preserved
     leaderboard_df = champion_df.copy()
     leaderboard_df["Avatar"] = leaderboard_df["Lab"].map(avatar_map)
     leaderboard_df["Avatar"] = leaderboard_df["Avatar"].fillna(leaderboard_df["Lab"])  
     
-    # Reorder columns for display (but keep Lab column for reference)
     display_df = leaderboard_df[["Rank", "Avatar", "Final Elo", "Medal"]]
     
     st.markdown("## 🏅 Hall of Champions")
     
-    # Format the DataFrame for better display
     styled_df = display_df.style \
         .format({"Final Elo": "{:.2f}"}) \
         .set_properties(**{
@@ -684,14 +736,19 @@ def run():
                      ('text-align', 'center')]
         }])
     
-    st.dataframe(styled_df, use_container_width=True, height=(len(display_df) + 1) * 35 + 3)
+    st.dataframe(styled_df, use_container_width=True, height=(len(display_df) + 1) * 35 + 3, hide_index=True)
 
-    # Champion announcement with enhanced styling
     champ_row = display_df.iloc[0]
+    avatar_data_uri_map = get_avatar_data_uri_map()
+    lab_username = champion_df.iloc[0]['Lab']  
+    avatar_data_uri = avatar_data_uri_map.get(lab_username, file_to_data_uri(DEFAULT_AVATAR))
+
     st.markdown(f"""
     <div class="champion-card">
         <h2>👑 CHAMPION OF THE REALM 👑</h2>
         <div class="champion-name">{champ_row['Avatar']}</div>
+        <img src="{avatar_data_uri}" alt="Champion Avatar" 
+             style="width: 230px; height: 230px; border-radius: 15px; border: 0px solid gold; margin: 20px auto; display: block;">
         <div class="champion-elo">Final Elo Rating: {champ_row['Final Elo']:.2f}</div>
         <div class="champion-medal">{champ_row['Medal']}</div>
         <p style="font-family: 'Cinzel', serif; font-size: 1.5rem; margin-top: 2rem; color: var(--mlbb-light);">

@@ -89,7 +89,6 @@ def run():
         st.warning("Access denied. This page is for admin only.")
         return
     
-    # --- Data Overview ---
     st.subheader("📋 All Submitted Data")
     try:
         conn = get_connection()
@@ -97,9 +96,8 @@ def run():
         conn.close()
 
         if not submissions_df.empty:
-            st.dataframe(submissions_df)
+            st.dataframe(submissions_df,hide_index=True)
 
-            # Export CSV
             csv = submissions_df.to_csv(index=False).encode("utf-8")
             st.download_button("📤 Download All Data", csv, "llkk_all_data.csv", "text/csv")
         else:
@@ -108,7 +106,6 @@ def run():
     except Exception as e:
         st.error(f"⚠️ Could not load submissions: {e}")
 
-    # --- Add New User Section ---
     st.subheader("🥷 Admin Management")
 
     with st.expander("➕ Add New Admin"):  
@@ -141,7 +138,7 @@ def run():
         conn = get_connection()
         df = pd.read_sql("SELECT id, username, role, avatar FROM labs_users", conn)  
         conn.close()
-        st.dataframe(df)
+        st.dataframe(df,hide_index=True)
     except Exception as e:
         st.error(f"⚠️ Could not load admin: {e}")
 
