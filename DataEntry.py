@@ -42,7 +42,7 @@ def count_current_month_submissions(lab):
     
     return count
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=3)
 def check_required_parameters(lab):
     today = date.today()
     current_month = today.month
