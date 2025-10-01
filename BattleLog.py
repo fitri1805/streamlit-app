@@ -21,7 +21,6 @@ EFLM_TARGETS = {
     "Protein (Total)": 2.0, "Urea": 3.9, "Uric Acid": 3.3
 }
 
-# Avatar name path mapping
 AVATAR_NAME_TO_PATH = {
     "Zareth":"avatars/zareth.png",
     "Dreadon":"avatars/Dreadon.png",
@@ -33,7 +32,6 @@ AVATAR_NAME_TO_PATH = {
     "Umbra":"avatars/Umbra.png",
 }
 DEFAULT_AVATAR = "avatars/default.png"
-
 
 # Resolve any avatar value (name / filename / relative path) to an actual file path
 def resolve_avatar_path(value: str) -> str:
@@ -76,14 +74,13 @@ def resolve_avatar_path(value: str) -> str:
 
 def file_to_data_uri(path: str) -> str:
     """Return data:<mime>;base64,<...> for an image file path."""
-    resolved = resolve_avatar_path(path)  # your existing resolver
+    resolved = resolve_avatar_path(path) 
     mime, _ = mimetypes.guess_type(resolved)
     mime = mime or "image/png"
     with open(resolved, "rb") as f:
         b64 = base64.b64encode(f.read()).decode("ascii")
     return f"data:{mime};base64,{b64}"
 
-# Database Connection
 def get_db_connection():
     return mysql.connector.connect(
         host="145.223.18.115",
@@ -93,6 +90,7 @@ def get_db_connection():
         database="gamifiedqc" 
     )
 
+@st.cache_data(ttl=300)
 def fetch_lab_data(lab=None):
     conn = get_db_connection()
     query = "SELECT * FROM submissions"
@@ -106,6 +104,7 @@ def fetch_lab_data(lab=None):
     conn.close()
     return df.reset_index(drop=True)
 
+@st.cache_data(ttl=300)
 def get_lab_avatars():
     """
     Returns {username: avatar_name} mapping
@@ -118,10 +117,10 @@ def get_lab_avatars():
     
     avatar_map = {}
     for row in rows:
-        # Use the avatar name if available, otherwise use username
         avatar_map[row['username']] = row['avatar'] or row['username']
     return avatar_map
 
+@st.cache_data(ttl=3600)
 def get_avatar_data_uri_map():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -136,29 +135,13 @@ def get_avatar_data_uri_map():
         try:
             out[row["username"]] = file_to_data_uri(avatar_value)
         except Exception:
-            # fallback to default avatar
             out[row["username"]] = file_to_data_uri(DEFAULT_AVATAR)
     return out
 
 DEFAULT_AVATAR_DATA_URI = file_to_data_uri(DEFAULT_AVATAR)
 
-def get_avatar_names():
-    """
-    Returns {username: avatar_name} mapping
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT username, avatar FROM labs_users")
-    rows = cursor.fetchall()
-    conn.close()
-
-    avatar_map = {}
-    for row in rows:
-        avatar_map[row['username']] = row['avatar'] or row['username'] 
-    return avatar_map
-
+@st.cache_data
 def encode_image_to_base64(image_path):
-    """Encode an image file to base64 string"""
     try:
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode()
@@ -210,7 +193,6 @@ def save_battle_log(lab_a, lab_b, winner, loser, updated_rating_a, updated_ratin
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Fetch the last round number from the database
     cursor.execute("SELECT MAX(CAST(round_num AS UNSIGNED)) FROM battle_logs")
     last_round = cursor.fetchone()[0]
 
@@ -236,11 +218,9 @@ def run_battlelog(auto_play=False, user_role="admin", user_lab=None,selected_mon
     
     conn = get_db_connection()
 
-    # Get simulation month filters from session state
     simulation_months = st.session_state.get('simulation_months')
     run_all_months = st.session_state.get('run_all_months', True)
     
-    # Filter battle logs by simulation months
     if simulation_months and not run_all_months:
         placeholders = ','.join(['%s'] * len(simulation_months))
         battle_logs_query = f"SELECT * FROM battle_logs WHERE month IN ({placeholders}) ORDER BY CAST(round_num AS UNSIGNED) ASC"
@@ -248,15 +228,13 @@ def run_battlelog(auto_play=False, user_role="admin", user_lab=None,selected_mon
     else:
         battle_logs_df = pd.read_sql("SELECT * FROM battle_logs ORDER BY CAST(round_num AS UNSIGNED) ASC", conn)
 
-    # Filter monthly rankings by simulation months
     if simulation_months and not run_all_months:
         placeholders = ','.join(['%s'] * len(simulation_months))
         monthly_rankings_query = f"SELECT * FROM monthly_rankings WHERE month IN ({placeholders}) ORDER BY parameter, level, ranking ASC"
         monthly_rankings_df = pd.read_sql(monthly_rankings_query, conn, params=simulation_months)
     else:
         monthly_rankings_df = pd.read_sql("SELECT * FROM monthly_rankings ORDER BY parameter, level, ranking ASC", conn)
-
-    # Filter monthly final by simulation months
+  
     if simulation_months and not run_all_months:
         placeholders = ','.join(['%s'] * len(simulation_months))
         monthly_final_query = f"SELECT * FROM monthly_final WHERE month IN ({placeholders}) ORDER BY month DESC, lab_rank ASC"
@@ -271,11 +249,9 @@ def run_battlelog(auto_play=False, user_role="admin", user_lab=None,selected_mon
 
     all_battle_logs_df = pd.read_sql("SELECT * FROM battle_logs ORDER BY CAST(round_num AS UNSIGNED) ASC", conn)
     
-    # Filter battle logs based on user role
     if user_role == "admin":
         battle_logs_df = all_battle_logs_df
     elif user_role == "lab" and user_lab:
-        # Only show battles involving the user's lab
         battle_logs_df = all_battle_logs_df[
             (all_battle_logs_df['lab_a'] == user_lab) | 
             (all_battle_logs_df['lab_b'] == user_lab)
@@ -283,13 +259,9 @@ def run_battlelog(auto_play=False, user_role="admin", user_lab=None,selected_mon
     else:
         battle_logs_df = pd.DataFrame()
 
-    # Get monthly rankings for display after battles
     monthly_rankings_df = pd.read_sql("SELECT * FROM monthly_rankings ORDER BY parameter, level, ranking ASC", conn)
-    # Get monthly final 
     monthly_final_df = pd.read_sql("SELECT * FROM monthly_final ORDER BY month DESC, lab_rank ASC", conn)
-    # Get lab ratings for final display
     lab_ratings_df = pd.read_sql("SELECT * FROM lab_ratings", conn)
-    # Get CV and Ratio from submission 
     submissions_data = pd.read_sql("SELECT Lab, `CV(%)` AS cv_value, Ratio AS ratio_value FROM submissions", conn)
     conn.close()
 
@@ -307,8 +279,7 @@ def run_battlelog(auto_play=False, user_role="admin", user_lab=None,selected_mon
     submission_json = submissions_data.to_dict(orient="records")
     monthly_final_json = monthly_final_df.to_dict(orient="records")
     
-    # Get avatar name mapping
-    avatar_name_map = get_avatar_names()
+    avatar_name_map = get_lab_avatars()
     
     st.components.v1.html(render_visual_battle(
         battle_logs_json, 
@@ -340,20 +311,16 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         ranking_copy = ranking.copy()
         month = ranking_copy.get('month', '')
         
-        # For January or first month, no movement
         if not month or month.endswith('-01') or month == 'Jan':
             ranking_copy['movement'] = "-"
         else:
-            # Get previous month's rankings
             prev_rankings = get_previous_month_rankings(month)
             
-            # Create dictionary for quick lookup of previous rankings
             prev_rank_dict = {}
             for rank in prev_rankings:
                 key = f"{rank['lab']}_{rank['parameter']}_{rank['level']}"
                 prev_rank_dict[key] = rank['ranking']
             
-            # Determine movement
             key = f"{ranking_copy['lab']}_{ranking_copy['parameter']}_{ranking_copy['level']}"
             
             if key not in prev_rank_dict:
@@ -367,8 +334,8 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
                 elif current_rank > prev_rank:
                     ranking_copy['movement'] = f"↓{current_rank - prev_rank}"
                 else:
-                    ranking_copy['movement'] = "–"  # No change
-        
+                    ranking_copy['movement'] = "–"  
+
         monthly_rankings_with_movement.append(ranking_copy)
 
     monthly_rankings_json = json.dumps(monthly_rankings_with_movement)
@@ -2511,20 +2478,20 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
             }}
         
         function showRankings() {{
-        document.getElementById('rankings-section').classList.remove('hidden');
-        
-        const container = document.getElementById('rankings-container');
-        container.innerHTML = '';
-        
-         if (filteredMonthlyRankings.length === 0) {{
-            container.innerHTML = '<p>No ranking data available for selected months.</p>';
-            return;
-        }}
-        
-        // Group by parameter and level
-        const groupedData = {{}};
+          document.getElementById('rankings-section').classList.remove('hidden');
+          
+          const container = document.getElementById('rankings-container');
+          container.innerHTML = '';
+          
+          if (filteredMonthlyRankings.length === 0) {{
+              container.innerHTML = '<p>No ranking data available for selected months.</p>';
+              return;
+          }}
+          
+          // Group by parameter and level
+          const groupedData = {{}};
           filteredMonthlyRankings.forEach(row => {{
-              const key = `${{row.parameter}}|${{row.level}}|${{row.month}}`;
+              const key = `${{row.parameter}}|${{row.level}}`;
               if (!groupedData[key]) {{
                   groupedData[key] = [];
               }}
@@ -2533,50 +2500,110 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
 
           // Create tables for each group
           for (const [key, rankings] of Object.entries(groupedData)) {{
-              const [parameter, level, month] = key.split('|');
+              const [parameter, level] = key.split('|');
               
-              const table = document.createElement('table');
-              table.className = 'rankings-table';
+              // Group rankings by month
+              const rankingsByMonth = {{}};
+              rankings.forEach(row => {{
+                  if (!rankingsByMonth[row.month]) {{
+                      rankingsByMonth[row.month] = [];
+                  }}
+                  rankingsByMonth[row.month].push(row);
+              }});
               
-              // Table header - Show only current month's data
-              const thead = document.createElement('thead');
-              thead.innerHTML = `
-                  <tr>
-                      <th colspan="${{month.endsWith('-01') ? '6' : '7'}}" style="text-align:center;">
-                          ${{parameter}} - ${{level}} (Month: ${{month}})
-                      </th>
-                  </tr>
-                  <tr>
-                      <th>Rank</th>
-                      <th>Lab</th>
-                      <th>Elo Before Bonus</th>
-                      <th>Bonus</th>
-                      <th>Final Elo</th>
-                      ${{month.endsWith('-01') ? '' : '<th>Movement</th>'}}
-                  </tr>
-              `;
-              table.appendChild(thead);
-            
-            // Table body
-            const tbody = document.createElement('tbody');
-            rankings.sort((a, b) => a.ranking - b.ranking).forEach(row => {{
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="rank-${{row.ranking}}">${{row.ranking}}</td>
-                    <td>${{getDisplayName(row.lab)}}</td>
-                    <td>${{row.elo_before_bonus}}</td>
-                    <td>+${{row.bonus}}</td>
-                    <td>${{row.final_elo}}</td>
-                    ${{month.endsWith('-01') ? '' : `<td>${{row.movement || '-'}}</td>`}}
-                `;
-                tbody.appendChild(tr);
-            }});
-            
-            table.appendChild(tbody);
-            container.appendChild(table);
-            container.appendChild(document.createElement('br'));
-        }}
-        }}      
+              // Sort months chronologically
+              const sortedMonths = Object.keys(rankingsByMonth).sort((a, b) => {{
+                  const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                  
+                  if (a.includes('-') && b.includes('-')) {{
+                      // YYYY-MM format
+                      return new Date(a) - new Date(b);
+                  }} else {{
+                     
+                      const aIndex = monthOrder.indexOf(a);
+                      const bIndex = monthOrder.indexOf(b);
+                      return aIndex - bIndex;
+                  }}
+              }});
+              
+              sortedMonths.forEach((month, monthIndex) => {{
+                  const currentMonthRankings = rankingsByMonth[month].sort((a, b) => a.ranking - b.ranking);
+                  
+                  const table = document.createElement('table');
+                  table.className = 'rankings-table';
+                  
+                
+                  const thead = document.createElement('thead');
+                  thead.innerHTML = `
+                      <tr>
+                          <th colspan="7" style="text-align:center;">
+                              ${{parameter}} - ${{level}} (Month: ${{month}})
+                          </th>
+                      </tr>
+                      <tr>
+                          <th>Rank</th>
+                          <th>Lab</th>
+                          <th>Elo Before Bonus</th>
+                          <th>Bonus</th>
+                          <th>Final Elo</th>
+                          <th>Movement</th>
+                      </tr>
+                  `;
+                  table.appendChild(thead);
+                
+                  
+                  const tbody = document.createElement('tbody');
+                  
+                  currentMonthRankings.forEach(row => {{
+                      const tr = document.createElement('tr');
+                      
+                      // Calculate movement
+                      let movementHtml = '';
+                      
+                      if (monthIndex === 0) {{
+                          // First month - show "NEW"
+                          movementHtml = '<span style="color: #00ff00; font-weight: bold;">NEW</span>';
+                      }} else {{
+                          // Get previous month's ranking for this lab
+                          const prevMonth = sortedMonths[monthIndex - 1];
+                          const prevMonthRankings = rankingsByMonth[prevMonth];
+                          const prevRank = prevMonthRankings.find(prev => prev.lab === row.lab);
+                          
+                          if (!prevRank) {{
+                              // New lab this month
+                              movementHtml = '<span style="color: #00ff00; font-weight: bold;">NEW</span>';
+                          }} else {{
+                              const movement = prevRank.ranking - row.ranking; 
+                              
+                              if (movement > 0) {{
+                                  // Rank improved - green up arrow
+                                  movementHtml = `<span style="color: #00ff00; font-weight: bold;">↑ ${{movement}}</span>`;
+                              }} else if (movement < 0) {{
+                                  // Rank dropped - red down arrow  
+                                  movementHtml = `<span style="color: #ff4444; font-weight: bold;">↓ ${{Math.abs(movement)}}</span>`;
+                              }} else {{
+                                  movementHtml = `<span style="color: #ffff00; font-weight: bold;">-</span>`;
+                              }}
+                          }}
+                      }}
+                      
+                      tr.innerHTML = `
+                          <td class="rank-${{row.ranking}}">${{row.ranking}}</td>
+                          <td>${{getDisplayName(row.lab)}}</td>
+                          <td>${{row.elo_before_bonus}}</td>
+                          <td>+${{row.bonus}}</td>
+                          <td>${{row.final_elo}}</td>
+                          <td>${{movementHtml}}</td>
+                      `;
+                      tbody.appendChild(tr);
+                  }});
+                  
+                  table.appendChild(tbody);
+                  container.appendChild(table);
+                  container.appendChild(document.createElement('br'));
+              }});
+          }}
+      }}   
         
         function resetDisplay() {{
           document.getElementById('labA-hp').style.width = '100%';
@@ -2619,7 +2646,6 @@ def fetch_battle_logs():
     return df
 
 def get_lab_rating(lab, parameter, level):
-    """Get the current rating for a lab's parameter-level combination"""
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
@@ -2737,7 +2763,6 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
         st.error("❌ No data available for the selected months!")
         return
 
-    # Clean numeric inputs
     df["CV(%)"] = pd.to_numeric(df["CV(%)"], errors="coerce")
     df["Ratio"] = pd.to_numeric(df["Ratio"], errors="coerce")
     df = df.dropna(subset=["n(QC)", "Working_Days"])
@@ -2773,10 +2798,8 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
             month_num = month_order.get(month_str, 1)
             return f"{current_year}-{month_num:02d}"
 
-    # Sort months chronologically
     sorted_months = sorted(df["Month"].unique(), key=lambda x: get_month_value(x))
     
-    # Penalize missing submissions FIRST
     all_labs = df["Lab"].unique().tolist()
     all_params = df["Parameter"].unique().tolist()
     all_levels = df["Level"].unique().tolist()
@@ -2794,7 +2817,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                 if lab_key not in ratings:
                     ratings[lab_key] = rating_lookup.get(lab_key, 1500)
 
-            # Apply penalties for missing submissions in this month
+         
             expected_labs = all_labs
             actual_labs = group["Lab"].unique()
             missing_labs = set(expected_labs) - set(actual_labs)
@@ -2817,7 +2840,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                 labA_key = f"{labA}_{key_prefix}"
                 labB_key = f"{labB}_{key_prefix}"
 
-                # CV score
+              
                 if pd.isna(cvA) and pd.isna(cvB):
                     cv_score_A = cv_score_B = 0.5
                 elif pd.isna(cvA):
@@ -2831,7 +2854,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                 else:
                     cv_score_A = cv_score_B = 0.5
 
-                # Ratio score
+              
                 if pd.isna(rA) and pd.isna(rB):
                     ratio_score_A = ratio_score_B = 0.5
                 elif pd.isna(rA):
@@ -2889,7 +2912,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                   month=month  
               )
 
-            # Apply bonuses AFTER all battles 
+            
             for lab in group["Lab"].unique():
                 lab_key = f"{lab}_{key_prefix}"
                 cv_value = group[group["Lab"] == lab]["CV(%)"].values[0]
@@ -2916,7 +2939,6 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                     "Points": round(ratings[lab_key], 2)
                 })
 
-    # Aggregate final per-lab ELO-style points
     lab_elos = {}
     lab_counts = {}
     for key, elo in ratings.items():
@@ -2937,8 +2959,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
     if len(summary_df) >= 1: summary_df.loc[0, "Medal"] = "🥇"
     if len(summary_df) >= 2: summary_df.loc[1, "Medal"] = "🥈"
     if len(summary_df) >= 3: summary_df.loc[2, "Medal"] = "🥉"
-    
-    # Save monthly rankings to database
+  
     summary_tables = []
     for month in months_to_process:
           month_data = df[df["Month"] == month]
@@ -2976,11 +2997,9 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                   df_table.insert(0, "Rank", df_table.index)
                   summary_tables.append(df_table)
 
-                  # Display table
                   st.markdown(f"### {param} — {level} (Month: {month}) (target CV {EFLM_TARGETS.get(param, 'n/a')})")
                   st.dataframe(df_table)
                   
-                  # Save rankings
                   for _, row in df_table.iterrows():
                       save_monthly_ranking(
                           lab=row["Lab"],
@@ -2997,8 +3016,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
         monthly = pd.concat(summary_tables)
         monthly_test_avg = monthly.groupby(["Lab", "Test", "Month"])["Final Elo"].mean().reset_index()
         monthly_final = monthly_test_avg.groupby(["Lab", "Month"])["Final Elo"].mean().reset_index()
-        
-        # Save and display only simulated months
+       
         for month in months_to_process:
             month_data = monthly_final[monthly_final["Month"] == month].copy()
             month_data = month_data.sort_values("Final Elo", ascending=False).reset_index(drop=True)
@@ -3013,24 +3031,20 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                     monthly_final_elo=round(row["Final Elo"], 2)
                 )
         
-        # Display final ranking (only simulated months)
         st.markdown("### 🏆 Overall Monthly Ranking (Simulated Months)")
         pivot_data = monthly_final.pivot(index="Lab", columns="Month", values="Final Elo")
         st.dataframe(pivot_data)
 
-    # Store results in session state for later display
     st.session_state.simulation_results = {
         "summary_tables": summary_tables,
     }
 
-    # Cache + persist history
     st.session_state["elo_history"] = ratings
     st.session_state["elo_progression"] = pd.DataFrame(rating_progression)
     st.session_state["fadzly_battles"] = summary_df
 
     st.success("✅ Battle simulation completed and saved to database.")
 
-# Main Run Function
 def run():
     apply_sidebar_theme()
     st.markdown("""
@@ -3348,7 +3362,6 @@ def run():
      
   }
 
-  /* Subheaders */
   h2, h3 {
       font-family: 'Orbitron', monospace !important;
       background: linear-gradient(45deg, #8A2BE2, #4169E1, #6A5ACD, #8A2BE2) !important;
@@ -3432,7 +3445,7 @@ def run():
       }
   }
 
-  /* Loading Animation */
+  
   .stSpinner > div {
       border-color: #8A2BE2 !important;
       animation: loadingPulse 1s ease-in-out infinite !important;
@@ -3463,7 +3476,6 @@ def run():
       background: linear-gradient(135deg, #4169E1, #FFD700, #8A2BE2) !important;
   }
 
-  /* Battle-themed Elements */
   .main .block-container::after {
       content: '⚔️ 🛡️ ⚔️';
       position: fixed;
@@ -3501,7 +3513,6 @@ def run():
         st.warning("Please log in to access this page.")
         st.stop()
     
-     # --- SIMULATION MONTH FILTER SECTION ---
     st.sidebar.markdown("---")
     st.sidebar.subheader("🎯 Simulation Month Selection")
     
@@ -3516,22 +3527,19 @@ def run():
         st.sidebar.info("No monthly data available yet.")
         selected_months = []
     else:
-        # Multi-select for simulation months
         selected_months = st.sidebar.multiselect(
             "Select months to run simulation:",
             options=available_months,
-            default=available_months,  # Run all months by default
+            default=available_months,  
             help="Only selected months will be processed in the simulation"
         )
-    
-    # Checkbox to run simulation on all data
+
     run_all_months = st.sidebar.checkbox("Run simulation on ALL months", value=True)
     
     st.sidebar.markdown("---")
 
     logged_lab = st.session_state.get("logged_in_lab")
 
-    # Get user role and avatar from DB
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT role, avatar FROM labs_users WHERE username = %s", (logged_lab,))
@@ -3546,13 +3554,11 @@ def run():
     else:
         st.info(f"🙂 Lab View: You will only see battles involving {logged_lab}")
 
-    # Display user avatar 
     badge_cols = st.columns([0.18, 1.20])
     if role == "admin":
         with badge_cols[1]:
             st.markdown(f"**Logged in as :** `{logged_lab}`")
     else:
-        # Lab user: show avatar image + name
         avatars_map = get_lab_avatars()
         avatar_name = avatars_map.get(logged_lab, logged_lab) 
         my_avatar_path = resolve_avatar_path(avatar_name)
@@ -3625,12 +3631,10 @@ def run():
         st.markdown("---")
         st.subheader(" Admin Control Panel")
         
-        # Use tabs for better organization
         tab1, tab2 = st.tabs(["Battle Simulation", "Battle Visualization"])
         
         with tab1:
             if st.button("🚀 Start Fadzly Battle Simulation", key="start_battle_sim"):
-                # Run simulation and set flags for countdown
                 simulate_fadzly_algorithm(df, selected_months=selected_months, run_all_months=run_all_months)
                 st.session_state.battle_simulation_started = True
                 st.session_state.show_countdown = True
