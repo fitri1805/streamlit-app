@@ -18,9 +18,9 @@ def get_connection():
 
 # Function to check if submission is allowed based on current date
 #COMMENTED OUT FOR NOW
-#def is_submission_allowed():
-#    today = date.today()
-#    return 1 <= today.day <= 14
+def is_submission_allowed():
+    today = date.today()
+    return 1 <= today.day <= 14
 
 def count_current_month_submissions(lab):
     today = date.today()
@@ -356,10 +356,10 @@ def run():
     lab = st.session_state["logged_in_lab"]
     
     # Check if submission is allowed based on date (COMMENT OUT FOR A WHILE)
-    #if not is_submission_allowed():
-    #    st.error("🚫 Data submission is only allowed from the 1st to the 14th of each month.")
-    #    st.info("The battle begins on the 15th. Please come back next month for data submission.")
-    #    st.stop()
+    if not is_submission_allowed():
+        st.error("🚫 Data submission is only allowed from the 1st to the 14th of each month.")
+        st.info("The battle begins on the 15th. Please come back next month for data submission.")
+        st.stop()
     
     submission_count = count_current_month_submissions(lab)
     missing_params = check_required_parameters(lab)
@@ -371,10 +371,10 @@ def run():
         else:
             st.warning(f"⚠️ Incomplete ({submission_count}/34)")
     
-    #with status_col2:
-        #today = date.today()
-        #days_left = 14 - today.day
-        #st.info(f"📅 Submission window: 1st-14th ({days_left} days left)")
+    with status_col2:
+        today = date.today()
+        days_left = 14 - today.day
+        st.info(f"📅 Submission window: 1st-14th ({days_left} days left)")
     
     if missing_params:
         with st.expander("Show missing parameters", expanded=False):
