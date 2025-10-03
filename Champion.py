@@ -388,12 +388,12 @@ def apply_mlbb_theme():
     }
 
     .stApp .countdown-text {
-        font-size: 2.5rem !important;
+        font-size: 15px !important;
         color: var(--mlbb-accent) !important;
         text-shadow: 0 0 20px rgba(255, 154, 139, 0.8) !important;
         animation: countdownPulse 1s ease-in-out infinite alternate !important;
         margin-bottom: 10px
-        font-family: 'Orbitron', monospace !important;
+        font-family: 'Cinzel', serif !important;
     }
 
     @keyframes countdownPulse {
