@@ -90,7 +90,7 @@ def get_db_connection():
         database="gamifiedqc" 
     )
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=10)
 def fetch_lab_data(lab=None):
     conn = get_db_connection()
     query = "SELECT * FROM submissions"
@@ -104,7 +104,7 @@ def fetch_lab_data(lab=None):
     conn.close()
     return df.reset_index(drop=True)
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=10)
 def get_lab_avatars():
     """
     Returns {username: avatar_name} mapping
@@ -120,7 +120,7 @@ def get_lab_avatars():
         avatar_map[row['username']] = row['avatar'] or row['username']
     return avatar_map
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=10)
 def get_avatar_data_uri_map():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
