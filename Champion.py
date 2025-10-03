@@ -392,6 +392,7 @@ def apply_mlbb_theme():
         color: var(--mlbb-accent) !important;
         text-shadow: 0 0 20px rgba(255, 154, 139, 0.8) !important;
         animation: countdownPulse 1s ease-in-out infinite alternate !important;
+        margin-bottom: 10px
     }
 
     @keyframes countdownPulse {
