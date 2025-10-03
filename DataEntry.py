@@ -226,6 +226,17 @@ def run():
         position: relative !important;
         }
     
+    @keyframes titleGlow {
+        0% { filter: brightness(1) drop-shadow(0 0 10px rgba(138, 43, 226, 0.8)); }
+        100% { filter: brightness(1.3) drop-shadow(0 0 25px rgba(65, 105, 225, 1)); }
+    }
+
+    @keyframes titleShine {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+                
     h2, h3 {
         font-family: 'Orbitron', monospace !important;
         background: linear-gradient(45deg, #8A2BE2, #6A0DAD, #4169E1, #8A2BE2) !important;

@@ -53,29 +53,6 @@ def apply_mlbb_theme():
     font-family: 'Rajdhani', sans-serif;
     }
 
-    .stApp .block-container::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: 
-            radial-gradient(2px 2px at 20% 30%, rgba(255, 77, 141, 0.4) 0%, transparent 100%),
-            radial-gradient(2px 2px at 80% 70%, rgba(74, 0, 224, 0.4) 0%, transparent 100%),
-            radial-gradient(3px 3px at 40% 20%, rgba(255, 154, 139, 0.3) 0%, transparent 100%),
-            radial-gradient(2px 2px at 60% 80%, rgba(255, 215, 0, 0.3) 0%, transparent 100%);
-        background-size: 300px 300px, 250px 250px, 400px 400px, 350px 350px;
-        animation: particlesMove 20s infinite linear;
-        pointer-events: none;
-        z-index: 0;
-    }
-
-    @keyframes particlesMove {
-        from { background-position: 0 0, 0 0, 0 0, 0 0; }
-        to { background-position: 300px 300px, 250px 250px, 400px 400px, 350px 350px; }
-    }
-
     /* Title Styling */
     .main-title {
         font-family: 'Cinzel', serif;
