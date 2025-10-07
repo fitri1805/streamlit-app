@@ -30,6 +30,23 @@ AVATAR_NAME_TO_PATH = {
     "Synkro":"avatars/Synkro.png",
     "Zyphira":"avatars/Zyphira.png",
     "Umbra":"avatars/Umbra.png",
+    "Kaira":"avatars/Kaira.png",
+    "Ignar":"avatars/Ignar.png",
+    "Ryden":"avatars/Ryden.png",
+    "Nyra":"avatars/Nyra.png",
+    "Kaen":"avatars/Kaen.png",
+    "Raika":"avatars/Raika.png",
+    "Dain":"avatars/Dain.png",
+    "Veyra":"avatars/Veyra.png",
+    "Reiko":"avatars/Reiko.png",
+    "Kane & Lyra":"avatars/kanenlyra.png",
+    "Mimi":"avatars/Mimi.png",
+    "Rowan":"avatars/Rowan.png",
+    "Taro":"avatars/Taro.png",
+    "Eldric":"avatars/Eldric.png",
+    "Noel":"avatars/Noel.png",
+    "Elias":"avatars/Elias.png",
+    "Finn":"avatars/Finn.png",
 }
 DEFAULT_AVATAR = "avatars/default.png"
 
