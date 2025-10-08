@@ -3,7 +3,12 @@ import mysql.connector
 import os
 import base64
 
-# --- CSS ---
+st.set_page_config(
+    page_title="LLKK - Lab Legend Kingdom Kvalis",
+    layout="wide",  
+    initial_sidebar_state="auto"
+)
+
 st.markdown("""
 <style>
     .avatar-card {
@@ -118,7 +123,7 @@ new_username = st.text_input("Username")
 new_password = st.text_input("Password", type="password")
 new_role = st.selectbox("Role", ["lab", "admin"])
 
-# --- Avatars ---
+
 avatars = {
     "Zareth":"avatars/zareth.png",
     "Dreadon":"avatars/Dreadon.png",
@@ -157,8 +162,8 @@ if "selected_avatar" not in st.session_state:
 def img_to_base64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
-    
-# --- Fetch used avatars from DB ---
+
+@st.cache_data(ttl=30)
 def get_used_avatars():
     conn = get_connection()
     cur = conn.cursor()
@@ -180,15 +185,9 @@ for i, (name, path) in enumerate(avatars.items()):
             is_used = name in used_avatars
             selected_class = "selected" if st.session_state.selected_avatar == name else ""
 
-            ############
-            is_used = name in used_avatars  
-            onclick_attr = f"onclick=\"selectAvatar('{name}', 'card-{i}', 'btn-{i}')\"" if not is_used else ""
-            card_class = f"avatar-card {'taken' if is_used else ''} {selected_class}"
-
-           # Display card
             st.markdown(
                 f"""
-                <div class="{card_class}">
+                <div class="avatar-card {'taken' if is_used else ''} {selected_class}">
                     <img src="data:image/png;base64,{img_base64}" class="avatar-image"/>
                     <div class="avatar-name">{name}</div>
                 </div>
@@ -196,29 +195,13 @@ for i, (name, path) in enumerate(avatars.items()):
                 unsafe_allow_html=True
             )
 
-            # Add a fixed spacer so button aligns
+         
+            if st.button(f"Select {name}", key=f"btn-{i}", use_container_width=True, disabled=is_used):
+                st.session_state.selected_avatar = name
+                st.rerun()  
+
             st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
 
-            # Button for available avatars
-            if st.button("select", key=f"btn-{i}", help=name, use_container_width=True, disabled=is_used):
-                st.session_state.selected_avatar = name
-
-# --- JS for instant visual highlight + trigger hidden button ---
-st.markdown("""
-<script>
-function selectAvatar(name, cardId) {
-    // Remove 'selected' from all cards
-    document.querySelectorAll('.avatar-card').forEach(el => el.classList.remove('selected'));
-    // Add 'selected' to clicked card
-    document.getElementById(cardId).classList.add('selected');
-    // Click hidden Streamlit button to update session_state
-    const hiddenBtn = window.parent.document.querySelector(`button[title="${name}"]`);
-    if (hiddenBtn) hiddenBtn.click();
-}
-</script>
-""", unsafe_allow_html=True)
-
-# --- Account Creation ---
 if st.button("Create Account"):
     if not st.session_state.selected_avatar:
         st.warning("⚠️ Please choose an avatar before creating your account.")
