@@ -39,7 +39,6 @@ st.markdown("""
         color: black; 
     }
 
-    /* Tick badge */
     .avatar-card.selected::after {
         content: "✔";
         position: absolute;
@@ -78,8 +77,7 @@ st.markdown("""
         cursor: not-allowed;
         position: relative;
     }
-
-    /* Badge merah untuk 'Taken' */
+  
     .avatar-card.taken::after {
         content: "Taken";
         position: absolute;
@@ -93,8 +91,7 @@ st.markdown("""
         border-radius: 12px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.2);
     }
-    
-    /* Hidden button styling */
+   
     .hidden-btn {
         display: none !important;
         visibility: hidden !important;
@@ -104,8 +101,14 @@ st.markdown("""
         margin: 0 !important;
     }
     
+    .admin-note {
+        padding: 10px;
+        border-radius: 5px;
+        border-left: 4px solid #2196f3;
+        margin: 10px 0;
+    }
     
-</style>
+</style>  
 """, unsafe_allow_html=True)
 
 def get_connection():
@@ -123,6 +126,12 @@ new_username = st.text_input("Username")
 new_password = st.text_input("Password", type="password")
 new_role = st.selectbox("Role", ["lab", "admin"])
 
+if new_role == "admin":
+    st.markdown("""
+    <div class="admin-note">
+        <strong>ℹ️ Admin Note:</strong> As an admin, you don't need to select an avatar.
+    </div>
+    """, unsafe_allow_html=True)
 
 avatars = {
     "Zareth":"avatars/zareth.png",
@@ -152,11 +161,13 @@ avatars = {
     "Finn":"avatars/Finn.png",
 }
 
-st.markdown("🎭 **Choose Your Avatar**")
+if new_role == "lab":
+    st.markdown("🎭 **Choose Your Avatar**")
 
 # session state
 if "selected_avatar" not in st.session_state:
     st.session_state.selected_avatar = None
+
 
 def check_username_exists(username):
     """Check if username already exists in database"""
@@ -184,39 +195,38 @@ def get_used_avatars():
     conn.close()
     return set(used)
 
-used_avatars = get_used_avatars()
+if new_role == "lab":
+    used_avatars = get_used_avatars()
+    cols = st.columns(4)
 
-cols = st.columns(4)
+    for i, (name, path) in enumerate(avatars.items()):
+        with cols[i % 4]:
+            if os.path.exists(path):
+                img_base64 = img_to_base64(path)
+                
+                is_used = name in used_avatars
+                selected_class = "selected" if st.session_state.selected_avatar == name else ""
 
-for i, (name, path) in enumerate(avatars.items()):
-    with cols[i % 4]:
-        if os.path.exists(path):
-            img_base64 = img_to_base64(path)
-            
-            is_used = name in used_avatars
-            selected_class = "selected" if st.session_state.selected_avatar == name else ""
+                st.markdown(
+                    f"""
+                    <div class="avatar-card {'taken' if is_used else ''} {selected_class}">
+                        <img src="data:image/png;base64,{img_base64}" class="avatar-image"/>
+                        <div class="avatar-name">{name}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
-            st.markdown(
-                f"""
-                <div class="avatar-card {'taken' if is_used else ''} {selected_class}">
-                    <img src="data:image/png;base64,{img_base64}" class="avatar-image"/>
-                    <div class="avatar-name">{name}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+                if st.button(f"Select {name}", key=f"btn-{i}", use_container_width=True, disabled=is_used):
+                    st.session_state.selected_avatar = name
+                    st.rerun()  
 
-         
-            if st.button(f"Select {name}", key=f"btn-{i}", use_container_width=True, disabled=is_used):
-                st.session_state.selected_avatar = name
-                st.rerun()  
-
-            st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
+                st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
 
 if st.button("Create Account"):
     if new_username and check_username_exists(new_username):
         st.error("❌ Username already exists! Please choose a different username.")
-    elif not st.session_state.selected_avatar:
+    elif new_role == "lab" and not st.session_state.selected_avatar:
         st.warning("⚠️ Please choose an avatar before creating your account.")
     elif not new_username or not new_password:
         st.warning("⚠️ Please fill all fields.")
@@ -224,14 +234,18 @@ if st.button("Create Account"):
         try:
             conn = get_connection()
             cur = conn.cursor()
+            if new_role == "admin":
+                avatar_value = None 
+            else:
+                avatar_value = st.session_state.selected_avatar
             cur.execute(
                 "INSERT INTO labs_users (username, password, role, avatar) VALUES (%s, %s, %s, %s)",
-                (new_username, new_password, new_role, st.session_state.selected_avatar),
+                (new_username, new_password, new_role, avatar_value),
             )
             conn.commit()
             cur.close()
             conn.close()
-            st.success("✅ Account created! Go back to Login.")
+            st.success("✅🎉 Account Created Successfully! Go back to Login.")
             st.session_state.selected_avatar = None
         except mysql.connector.Error as err:
             st.error(f"❌ Database error: {err}")
