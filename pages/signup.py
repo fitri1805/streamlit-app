@@ -163,7 +163,6 @@ def img_to_base64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-@st.cache_data(ttl=30)
 def get_used_avatars():
     conn = get_connection()
     cur = conn.cursor()
