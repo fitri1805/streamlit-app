@@ -158,6 +158,18 @@ st.markdown("🎭 **Choose Your Avatar**")
 if "selected_avatar" not in st.session_state:
     st.session_state.selected_avatar = None
 
+def check_username_exists(username):
+    """Check if username already exists in database"""
+    if not username or len(username.strip()) == 0:
+        return False
+    
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT username FROM labs_users WHERE username = %s", (username.strip(),))
+    result = cur.fetchone() is not None
+    cur.close()
+    conn.close()
+    return result
 
 def img_to_base64(path):
     with open(path, "rb") as f:
@@ -202,7 +214,9 @@ for i, (name, path) in enumerate(avatars.items()):
             st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
 
 if st.button("Create Account"):
-    if not st.session_state.selected_avatar:
+    if new_username and check_username_exists(new_username):
+        st.error("❌ Username already exists! Please choose a different username.")
+    elif not st.session_state.selected_avatar:
         st.warning("⚠️ Please choose an avatar before creating your account.")
     elif not new_username or not new_password:
         st.warning("⚠️ Please fill all fields.")
