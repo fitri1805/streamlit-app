@@ -57,8 +57,8 @@ def check_required_parameters(lab):
     
     all_parameters = sorted([
         "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
-        "Creatinine", "Direct Bilirubin", "ALP", "Glucose", "HDL Cholesterol",
-        "LDL Cholesterol", "Potassium", "Protein (Total)", "Sodium",
+        "Creatinine", "ALP", "Glucose", "HDL Cholesterol",
+        "CL", "Potassium", "Protein (Total)", "Sodium",
         "Triglycerides", "Urea", "Uric Acid"
     ])
     
@@ -374,10 +374,10 @@ def run():
     
     status_col1, status_col2 = st.columns([1, 3])
     with status_col1:
-        if submission_count == 34 and not missing_params:
-            st.success(f"✅ Ready for battle! ({submission_count}/34)") 
+        if submission_count == 32 and not missing_params:
+            st.success(f"✅ Ready for battle! ({submission_count}/32)") 
         else:
-            st.warning(f"⚠️ Incomplete ({submission_count}/34)")
+            st.warning(f"⚠️ Incomplete ({submission_count}/32)")
     
     with status_col2:
         today = date.today()
@@ -586,8 +586,8 @@ def run():
                     
                     all_parameters = sorted([
                     "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
-                    "Creatinine", "Direct Bilirubin", "ALP", "Glucose", "HDL Cholesterol",
-                    "LDL Cholesterol", "Potassium", "Protein (Total)", "Sodium",
+                    "Creatinine", "ALP", "Glucose", "HDL Cholesterol",
+                    "CL", "Potassium", "Protein (Total)", "Sodium",
                     "Triglycerides", "Urea", "Uric Acid"
                     ])
                     all_levels = ["L1", "L2"]
@@ -714,8 +714,8 @@ def run():
     
         parameters = sorted([
             "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
-            "Creatinine", "Direct Bilirubin", "ALP", "Glucose", "HDL Cholesterol",
-            "LDL Cholesterol", "Potassium", "Protein (Total)", "Sodium",
+            "Creatinine", "ALP", "Glucose", "HDL Cholesterol",
+            "CL", "Potassium", "Protein (Total)", "Sodium",
             "Triglycerides", "Urea", "Uric Acid"
         ])
         levels = ["L1", "L2"]
