@@ -746,7 +746,13 @@ def run():
             if ratio_error:
                 validation_errors.append(ratio_error)
             
-            cols[6].number_input("Ratio", value=ratio, disabled=True, key=f"ratio_{i}")
+            ratio_display = ratio if n_qc > 0 and wd > 0 else 0.0
+            cols[6].metric(
+                label="Ratio", 
+                value=f"{ratio_display:.2f}",
+                delta=None,
+                help="n(QC) / Working Days"
+            )
 
             # Check duplicate parameter-month-level 
             existing_count = check_existing_parameter_month(lab, parameter, month, level)
