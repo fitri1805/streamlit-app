@@ -107,7 +107,6 @@ def get_db_connection():
         database="gamifiedqc" 
     )
 
-@st.cache_data(ttl=10)
 def fetch_lab_data(lab=None):
     conn = get_db_connection()
     query = "SELECT * FROM submissions"
@@ -121,7 +120,6 @@ def fetch_lab_data(lab=None):
     conn.close()
     return df.reset_index(drop=True)
 
-@st.cache_data(ttl=10)
 def get_lab_avatars():
     """
     Returns {username: avatar_name} mapping
@@ -137,7 +135,6 @@ def get_lab_avatars():
         avatar_map[row['username']] = row['avatar'] or row['username']
     return avatar_map
 
-@st.cache_data(ttl=10)
 def get_avatar_data_uri_map():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -157,7 +154,6 @@ def get_avatar_data_uri_map():
 
 DEFAULT_AVATAR_DATA_URI = file_to_data_uri(DEFAULT_AVATAR)
 
-@st.cache_data
 def encode_image_to_base64(image_path):
     try:
         with open(image_path, "rb") as image_file:

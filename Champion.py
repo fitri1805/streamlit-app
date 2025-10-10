@@ -443,7 +443,6 @@ def is_battle_started():
     today = date.today()
     return today.day >= 15
 
-@st.cache_data(ttl=30)
 def get_available_months():
     conn = get_db_connection()
     months_df = pd.read_sql("SELECT DISTINCT month FROM monthly_final ORDER BY month DESC", conn)
@@ -571,7 +570,6 @@ def file_to_data_uri(path: str) -> str:
         b64 = base64.b64encode(f.read()).decode("ascii")
     return f"data:{mime};base64,{b64}"
 
-@st.cache_data(ttl=60)
 def get_avatar_data_uri_map():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
