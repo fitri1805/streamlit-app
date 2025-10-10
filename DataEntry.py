@@ -17,7 +17,6 @@ def get_connection():
     )
 
 # Function to check if submission is allowed based on current date
-#COMMENTED OUT FOR NOW
 def is_submission_allowed():
     today = date.today()
     return 1 <= today.day <= 14
@@ -41,6 +40,7 @@ def count_current_month_submissions(lab):
     conn.close()
     
     return count
+
 
 def check_required_parameters(lab):
     today = date.today()
@@ -129,7 +129,6 @@ def validate_ratio(n_qc, wd, parameter, level, month):
             return f"Ratio for {parameter} - {level} in {month} must be ≥ 1"
     return None
 
-# Function to check if both levels are submitted for parameters
 def validate_both_levels_submitted(input_data):
     errors = []
     
@@ -224,7 +223,7 @@ def run():
         margin-bottom: 2rem !important;
         position: relative !important;
         }
-    
+                
     @keyframes titleGlow {
         0% { filter: brightness(1) drop-shadow(0 0 10px rgba(138, 43, 226, 0.8)); }
         100% { filter: brightness(1.3) drop-shadow(0 0 25px rgba(65, 105, 225, 1)); }
@@ -235,7 +234,7 @@ def run():
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
     }
-                
+    
     h2, h3 {
         font-family: 'Orbitron', monospace !important;
         background: linear-gradient(45deg, #8A2BE2, #6A0DAD, #4169E1, #8A2BE2) !important;
@@ -365,7 +364,6 @@ def run():
 
     lab = st.session_state["logged_in_lab"]
     
-    # Check if submission is allowed based on date (COMMENT OUT FOR A WHILE)
     if not is_submission_allowed():
         st.error("🚫 Data submission is only allowed from the 1st to the 14th of each month.")
         st.info("The battle begins on the 15th. Please come back next month for data submission.")
@@ -377,7 +375,7 @@ def run():
     status_col1, status_col2 = st.columns([1, 3])
     with status_col1:
         if submission_count == 34 and not missing_params:
-            st.success(f"✅ Ready for battle! ({submission_count}/34)")
+            st.success(f"✅ Ready for battle! ({submission_count}/34)") 
         else:
             st.warning(f"⚠️ Incomplete ({submission_count}/34)")
     
@@ -388,10 +386,9 @@ def run():
     
     if missing_params:
         with st.expander("Show missing parameters", expanded=False):
-            st.warning("⚠️ Missing submissions for:")
+            st.warning("⚠️ Missing submissions for:")  
             for param in missing_params:
-                st.write(f"- {param}")
-
+                st.write(f"- {param}")   
    
     all_submissions_df = get_all_submissions(lab)
     
