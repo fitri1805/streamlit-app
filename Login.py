@@ -313,19 +313,20 @@ def apply_sidebar_theme():
 def run_login():
     st.sidebar.title("🔐 Lab Login")
 
-    username = st.sidebar.text_input("Username")
-    password = st.sidebar.text_input("Password", type="password")
+    if "logged_in_lab" not in st.session_state:
+        username = st.sidebar.text_input("Username")
+        password = st.sidebar.text_input("Password", type="password")
 
-    if st.sidebar.button("Login"):
-        user = validate_user(username, password)
-        if user:
-            st.session_state["logged_in_lab"] = user["username"]
-            st.session_state["user_role"] = user["role"]
-            st.session_state["login_success"] = True
-            st.sidebar.success(f"Welcome, {username}!")
-        else:
-            st.session_state["login_success"] = False
-            st.sidebar.error("❌ Incorrect username or password")
+        if st.sidebar.button("Login"):
+            user = validate_user(username, password)
+            if user:
+                st.session_state["logged_in_lab"] = user["username"]
+                st.session_state["user_role"] = user["role"]
+                st.session_state["login_success"] = True
+                st.rerun()
+            else:
+                st.session_state["login_success"] = False
+                st.sidebar.error("❌ Incorrect username or password")
 
     if "logged_in_lab" in st.session_state:
         st.sidebar.markdown(f"✅ Logged in as: `{st.session_state['logged_in_lab']}`")
