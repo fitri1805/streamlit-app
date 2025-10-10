@@ -776,6 +776,7 @@ def run():
             if data["n(QC)"] > 0 and data["Working_Days"] > 0:
                 ratio = data["n(QC)"] / data["Working_Days"]
                 if ratio >= 1:
+                    data["Ratio"] = ratio
                     df = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
         
         st.subheader("Preview of Valid Entries")
