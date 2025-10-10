@@ -57,7 +57,7 @@ def check_required_parameters(lab):
     
     all_parameters = sorted([
         "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
-        "Creatinine", "Direct Bilirubin", "GGT", "Glucose", "HDL Cholesterol",
+        "Creatinine", "Direct Bilirubin", "ALP", "Glucose", "HDL Cholesterol",
         "LDL Cholesterol", "Potassium", "Protein (Total)", "Sodium",
         "Triglycerides", "Urea", "Uric Acid"
     ])
@@ -586,7 +586,7 @@ def run():
                     
                     all_parameters = sorted([
                     "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
-                    "Creatinine", "Direct Bilirubin", "GGT", "Glucose", "HDL Cholesterol",
+                    "Creatinine", "Direct Bilirubin", "ALP", "Glucose", "HDL Cholesterol",
                     "LDL Cholesterol", "Potassium", "Protein (Total)", "Sodium",
                     "Triglycerides", "Urea", "Uric Acid"
                     ])
@@ -714,7 +714,7 @@ def run():
     
         parameters = sorted([
             "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
-            "Creatinine", "Direct Bilirubin", "GGT", "Glucose", "HDL Cholesterol",
+            "Creatinine", "Direct Bilirubin", "ALP", "Glucose", "HDL Cholesterol",
             "LDL Cholesterol", "Potassium", "Protein (Total)", "Sodium",
             "Triglycerides", "Urea", "Uric Acid"
         ])

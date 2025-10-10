@@ -14,7 +14,7 @@ import mimetypes
 # EFLM Targets 
 EFLM_TARGETS = {
     "Albumin": 2.1, "ALT": 6.0, "ALP": 5.4, "AST": 5.3, "Bilirubin (Total)": 8.6,
-    "Cholesterol": 2.9, "CK": 4.5, "Creatinine": 3.4, "GGT": 7.7, "Glucose": 2.9,
+    "Cholesterol": 2.9, "CK": 4.5, "Creatinine": 3.4, "ALP": 7.7, "Glucose": 2.9,
     "HDL Cholesterol": 4.0, "LDL Cholesterol": 4.9, "Potassium": 1.8, "Sodium": 0.9,
     "Protein (Total)": 2.0, "Urea": 3.9, "Uric Acid": 3.3
 }
