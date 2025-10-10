@@ -151,6 +151,10 @@ def validate_both_levels_submitted(input_data):
     return errors
 
 def get_all_submissions(lab):
+    cache_key = f"all_submissions_{lab}"
+    if cache_key in st.session_state:
+        return st.session_state[cache_key]
+    
     conn = get_connection()
     query = """
         SELECT * FROM submissions 
@@ -159,6 +163,9 @@ def get_all_submissions(lab):
     """
     all_df = pd.read_sql(query, conn, params=[lab])
     conn.close()
+    
+    # Cache the result
+    st.session_state[cache_key] = all_df
     return all_df
 
 # Function to get submissions for CSV export
@@ -716,7 +723,6 @@ def run():
 
     
     if not st.session_state.edit_mode:
-    
         parameters = sorted([
             "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
             "Creatinine", "Direct Bilirubin", "GGT", "Glucose", "HDL Cholesterol",
@@ -729,61 +735,57 @@ def run():
                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
         current_month = months[current_month_num - 1]
 
-        num_rows = st.number_input("🔢 How many entries to input?", min_value=1, max_value=50, value=5, step=1)
-
-        st.subheader(f"Enter Data for: :green[{lab}]")
-
-        input_data = []
-        validation_errors = []
-        seen_ratio_errors = set()
-        
-        for i in range(num_rows):
-            cols = st.columns(7)
-            parameter = cols[0].selectbox("Parameter", parameters, key=f"param_{i}")
-            level = cols[1].selectbox("Level", levels, key=f"level_{i}")
-            month = cols[2].text_input("Month", value=current_month, disabled=True, key=f"month_{i}")
-            cv = cols[3].number_input("CV(%)", min_value=0.0, max_value=100.0, key=f"cv_{i}")
-            n_qc = cols[4].number_input("n(QC)", min_value=0, max_value=100, key=f"n_{i}")
-            wd = cols[5].number_input("Working_Days", min_value=1, max_value=31, key=f"wd_{i}")
+        with st.form("data_entry_form", clear_on_submit=False):
+            num_rows = st.number_input("🔢 How many entries to input?", min_value=1, max_value=50, value=5, step=1)
             
-            # Calculate ratio and validate
-            ratio = round(n_qc / wd, 2) if n_qc > 0 and wd > 0 else 0.0
-            
-            ratio_error = validate_ratio(n_qc, wd, parameter, level, current_month)
-            if ratio_error:
-                validation_errors.append(ratio_error)
-            
-            cols[6].number_input("Ratio", value=ratio, disabled=True, key=f"ratio_{i}")
+            st.subheader(f"Enter Data for: :green[{lab}]")
 
-            # Check duplicate parameter-month-level 
-            existing_count = check_existing_parameter_month(lab, parameter, current_month, level)
-            if existing_count > 0:
-                validation_errors.append(f" {parameter} - {level} for {current_month} already exists!")
+            input_data = []
+            validation_errors = []
+            seen_ratio_errors = set()
             
-            # Check ratio consistency 
-            existing_ratio = get_parameter_ratio(lab, parameter, current_month)
-            if existing_ratio is not None and ratio != existing_ratio:
-                if (parameter, current_month) not in seen_ratio_errors:
-                    validation_errors.append(f"Ratio for {parameter} in {current_month} must be the same for both levels!")
-                    seen_ratio_errors.add((parameter, current_month))
+            for i in range(num_rows):
+                cols = st.columns(7)
+                parameter = cols[0].selectbox("Parameter", parameters, key=f"param_{i}")
+                level = cols[1].selectbox("Level", levels, key=f"level_{i}")
+                cols[2].markdown(f"**{current_month}**")  # Display as text instead of input
+                cv = cols[3].number_input("CV(%)", min_value=0.0, max_value=100.0, key=f"cv_{i}")
+                n_qc = cols[4].number_input("n(QC)", min_value=0, max_value=100, key=f"n_{i}")
+                wd = cols[5].number_input("Working_Days", min_value=1, max_value=31, key=f"wd_{i}")
+                
+                # Calculate ratio and display as metric (not input)
+                ratio = round(n_qc / wd, 2) if n_qc > 0 and wd > 0 else 0.0
+                ratio_color = "green" if ratio >= 1 else "red"
+                cols[6].markdown(
+                    f"<div style='text-align: center; padding: 8px; border: 1px solid {ratio_color}; border-radius: 5px;'>"
+                    f"<strong style='color: {ratio_color};'>{ratio:.2f}</strong></div>", 
+                    unsafe_allow_html=True
+                )
 
-            input_data.append({
-                "Lab": lab,
-                "Parameter": parameter,
-                "Level": level,
-                "Month": current_month,
-                "CV(%)": cv,
-                "n(QC)": n_qc,
-                "Working_Days": wd,
-                "Ratio": ratio
-            })
+                # Store data
+                input_data.append({
+                    "Lab": lab,
+                    "Parameter": parameter,
+                    "Level": level,
+                    "Month": current_month,
+                    "CV(%)": cv,
+                    "n(QC)": n_qc,
+                    "Working_Days": wd,
+                    "Ratio": ratio
+                })
 
-        df = pd.DataFrame()
-        for data in input_data:
-            if data["n(QC)"] > 0 and data["Working_Days"] > 0:
-                ratio = data["n(QC)"] / data["Working_Days"]
-                if ratio >= 1:
-                    df = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
+            # Submit button inside the form
+            submitted = st.form_submit_button("💾 Submit to battle")
+            
+            if submitted:
+                # Your existing validation and submission logic here
+                # Move all the validation and database insertion code inside this if block
+                df = pd.DataFrame()
+                for data in input_data:
+                    if data["n(QC)"] > 0 and data["Working_Days"] > 0:
+                        ratio = data["n(QC)"] / data["Working_Days"]
+                        if ratio >= 1:
+                            df = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
         
         st.subheader("Preview of Valid Entries")
         if not df.empty:
