@@ -151,10 +151,6 @@ def validate_both_levels_submitted(input_data):
     return errors
 
 def get_all_submissions(lab):
-    cache_key = f"all_submissions_{lab}"
-    if cache_key in st.session_state:
-        return st.session_state[cache_key]
-    
     conn = get_connection()
     query = """
         SELECT * FROM submissions 
@@ -163,9 +159,6 @@ def get_all_submissions(lab):
     """
     all_df = pd.read_sql(query, conn, params=[lab])
     conn.close()
-    
-    # Cache the result
-    st.session_state[cache_key] = all_df
     return all_df
 
 # Function to get submissions for CSV export
@@ -194,11 +187,6 @@ DATA_DIR = "data"
 
 def run():
     apply_sidebar_theme()
-
-    if "initialized" not in st.session_state:
-        st.session_state.initialized = True
-        st.session_state.prevent_rerun = False
-        
     st.markdown("""
     <style>
     /* MLBB Color Palette */
@@ -721,177 +709,164 @@ def run():
                         st.session_state.edit_mode = False
                         st.rerun()
 
-        if not st.session_state.edit_mode:
-            parameters = sorted([
-                "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
-                "Creatinine", "Direct Bilirubin", "GGT", "Glucose", "HDL Cholesterol",
-                "LDL Cholesterol", "Potassium", "Protein (Total)", "Sodium",
-                "Triglycerides", "Urea", "Uric Acid"
-            ])
-            levels = ["L1", "L2"]
-            current_month_num = date.today().month
-            months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
-                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-            current_month = months[current_month_num - 1]
+    
+    if not st.session_state.edit_mode:
+    
+        parameters = sorted([
+            "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
+            "Creatinine", "Direct Bilirubin", "GGT", "Glucose", "HDL Cholesterol",
+            "LDL Cholesterol", "Potassium", "Protein (Total)", "Sodium",
+            "Triglycerides", "Urea", "Uric Acid"
+        ])
+        levels = ["L1", "L2"]
+        months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
-            # Initialize df outside the form
-            df = pd.DataFrame()
-            validation_errors = []
+        num_rows = st.number_input("🔢 How many entries to input?", min_value=1, max_value=50, value=5, step=1)
+
+        st.subheader(f"Enter Data for: :green[{lab}]")
+
+        input_data = []
+        validation_errors = []
+        seen_ratio_errors = set()
+        
+        for i in range(num_rows):
+            cols = st.columns(7)
+            parameter = cols[0].selectbox("Parameter", parameters, key=f"param_{i}")
+            level = cols[1].selectbox("Level", levels, key=f"level_{i}")
+            month = cols[2].selectbox("Month", months, key=f"month_{i}")
+            cv = cols[3].number_input("CV(%)", min_value=0.0, max_value=100.0, key=f"cv_{i}")
+            n_qc = cols[4].number_input("n(QC)", min_value=0, max_value=100, key=f"n_{i}")
+            wd = cols[5].number_input("Working_Days", min_value=1, max_value=31, key=f"wd_{i}")
             
-            # Use a form to batch all inputs
-            with st.form("data_entry_form", clear_on_submit=False):
-                num_rows = st.number_input("🔢 How many entries to input?", min_value=1, max_value=50, value=5, step=1)
-                
-                st.subheader(f"Enter Data for: :green[{lab}]")
-
-                input_data = []
-                temp_validation_errors = []
-                seen_ratio_errors = set()
-                
-                for i in range(num_rows):
-                    cols = st.columns(7)
-                    parameter = cols[0].selectbox("Parameter", parameters, key=f"param_{i}")
-                    level = cols[1].selectbox("Level", levels, key=f"level_{i}")
-                    cols[2].markdown(f"**{current_month}**")
-                    cv = cols[3].number_input("CV(%)", min_value=0.0, max_value=100.0, key=f"cv_{i}")
-                    n_qc = cols[4].number_input("n(QC)", min_value=0, max_value=100, key=f"n_{i}")
-                    wd = cols[5].number_input("Working_Days", min_value=1, max_value=31, key=f"wd_{i}")
-                    
-                    # Calculate ratio and display as metric
-                    ratio = round(n_qc / wd, 2) if n_qc > 0 and wd > 0 else 0.0
-                    ratio_color = "green" if ratio >= 1 else "red"
-                    cols[6].markdown(
-                        f"<div style='text-align: center; padding: 8px; border: 1px solid {ratio_color}; border-radius: 5px;'>"
-                        f"<strong style='color: {ratio_color};'>{ratio:.2f}</strong></div>", 
-                        unsafe_allow_html=True
-                    )
-
-                    # Validation
-                    ratio_error = validate_ratio(n_qc, wd, parameter, level, current_month)
-                    if ratio_error:
-                        temp_validation_errors.append(ratio_error)
-                    
-                    existing_count = check_existing_parameter_month(lab, parameter, current_month, level)
-                    if existing_count > 0:
-                        temp_validation_errors.append(f" {parameter} - {level} for {current_month} already exists!")
-
-                    existing_ratio = get_parameter_ratio(lab, parameter, current_month)
-                    if existing_ratio is not None and ratio != existing_ratio:
-                        if (parameter, current_month) not in seen_ratio_errors:
-                            temp_validation_errors.append(f"Ratio for {parameter} in {current_month} must be the same for both levels!")
-                            seen_ratio_errors.add((parameter, current_month))
-
-                    input_data.append({
-                        "Lab": lab,
-                        "Parameter": parameter,
-                        "Level": level,
-                        "Month": current_month,
-                        "CV(%)": cv,
-                        "n(QC)": n_qc,
-                        "Working_Days": wd,
-                        "Ratio": ratio
-                    })
-
-                # Submit button inside the form
-                submitted = st.form_submit_button("💾 Submit to battle")
-                
-                if submitted:
-                    # Process the submission
-                    validation_errors = temp_validation_errors
-                    
-                    # Create DataFrame from valid entries
-                    for data in input_data:
-                        if data["n(QC)"] > 0 and data["Working_Days"] > 0:
-                            ratio = data["n(QC)"] / data["Working_Days"]
-                            if ratio >= 1:
-                                df = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
-
-            # Display preview and handle submission (outside the form but inside the same scope)
-            st.subheader("Preview of Valid Entries")
-            if not df.empty:
-                st.dataframe(df)
-            else:
-                st.info("No valid entries with ratio ≥ 1")
+            # Calculate ratio and validate
+            ratio = round(n_qc / wd, 2) if n_qc > 0 and wd > 0 else 0.0
             
-            if validation_errors:
-                st.error("🚫 Validation Errors:")
-                for error in validation_errors:
-                    st.write(f"- {error}")
+            ratio_error = validate_ratio(n_qc, wd, parameter, level, month)
+            if ratio_error:
+                validation_errors.append(ratio_error)
+            
+            cols[6].number_input("Ratio", value=ratio, disabled=True, key=f"ratio_{i}")
 
-            # Rest of your existing code for download button and submission logic...
-            if not view_df.empty:
-                csv_data = view_df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Download Submitted Data",
-                    data=csv_data,
-                    file_name=f"{lab}_llkk_data_entry.csv",
-                    mime="text/csv",
-                    key="download_submitted_data"
-                )
-            else:
-                st.info("No submitted data available to download")
+            # Check duplicate parameter-month-level 
+            existing_count = check_existing_parameter_month(lab, parameter, month, level)
+            if existing_count > 0:
+                validation_errors.append(f" {parameter} - {level} for {month} already exists!")
+            
+            # Check ratio consistency 
+            existing_ratio = get_parameter_ratio(lab, parameter, month)
+            if existing_ratio is not None and ratio != existing_ratio:
+                if (parameter, month) not in seen_ratio_errors:
+                    validation_errors.append(f"Ratio for {parameter} in {month} must be the same for both levels!")
+                    seen_ratio_errors.add((parameter, month))
 
-            submission_key = f"submission_made_{lab}"  
-            if submission_key not in st.session_state:
-                st.session_state[submission_key] = False
+            input_data.append({
+                "Lab": lab,
+                "Parameter": parameter,
+                "Level": level,
+                "Month": month,
+                "CV(%)": cv,
+                "n(QC)": n_qc,
+                "Working_Days": wd,
+                "Ratio": ratio
+            })
 
-            # Handle the actual database submission
-            if submitted and not st.session_state[submission_key] and not validation_errors:
-                if not df.empty:
-                    final_level_errors = validate_both_levels_submitted(input_data)
-                    if final_level_errors:
-                        st.error("🚫 Level submission errors:")
-                        for error in final_level_errors:
-                            st.write(f"- {error}")
-                    else:
-                        conn = get_connection()
-                        cursor = conn.cursor()
-                        saved_rows = 0
+        df = pd.DataFrame()
+        for data in input_data:
+            if data["n(QC)"] > 0 and data["Working_Days"] > 0:
+                ratio = data["n(QC)"] / data["Working_Days"]
+                if ratio >= 1:
+                    data["Ratio"] = ratio
+                    df = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
+        
+        st.subheader("Preview of Valid Entries")
+        if not df.empty:
+            st.dataframe(df)
+        else:
+            st.info("No valid entries with ratio ≥ 1")
+        
+        
+        if validation_errors:
+            st.error("🚫 Validation Errors:")
+            for error in validation_errors:
+                st.write(f"- {error}")
+        
+        if not view_df.empty:
+            csv_data = view_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Submitted Data",
+                data=csv_data,
+                file_name=f"{lab}_llkk_data_entry.csv",
+                mime="text/csv",
+                key="download_submitted_data"
+            )
+        else:
+            st.info("No submitted data available to download")
 
-                        for _, row in df.iterrows():
-                            cursor.execute("""
-                                INSERT INTO submissions 
-                                (Lab, Parameter, Level, Month, `CV(%)`, `n(QC)`, `Working_Days`, Ratio)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                            """, (
-                                row["Lab"], row["Parameter"], row["Level"], row["Month"],
-                                row["CV(%)"], row["n(QC)"], row["Working_Days"], row["Ratio"]
-                            ))
-                            saved_rows += 1
+        submission_key = f"submission_made_{lab}"  
 
-                        conn.commit()
-                        cursor.close()
-                        conn.close()
+        if submission_key not in st.session_state:
+            st.session_state[submission_key] = False
 
-                        if saved_rows > 0:
-                            st.success(f"✅ Data saved and submitted into battlefield successfully!")
-                            time.sleep(2)
-                            st.session_state[submission_key] = True
-                            st.rerun()
+        if not st.session_state[submission_key]:
+            if st.button("💾 Submit to battle", disabled=bool(validation_errors)):
+                if validation_errors:
+                    st.error("🚫 Please fix validation errors before submitting!")
+                    st.session_state[submission_key] = False
                 else:
-                    st.warning("⚠️ Please complete all fields before submitting.")
+                    st.session_state[submission_key] = True  
+                    if not df.empty:
+                        final_level_errors = validate_both_levels_submitted(input_data)
+                        if final_level_errors:
+                            st.error("🚫 Level submission errors:")
+                            for error in final_level_errors:
+                                st.write(f"- {error}")
+                            st.session_state[submission_key] = False
+                        else:
+                            conn = get_connection()
+                            cursor = conn.cursor()
+                            saved_rows = 0
+
+                            for _, row in df.iterrows():
+                                cursor.execute("""
+                                    INSERT INTO submissions 
+                                    (Lab, Parameter, Level, Month, `CV(%)`, `n(QC)`, `Working_Days`, Ratio)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                """, (
+                                    row["Lab"], row["Parameter"], row["Level"], row["Month"],
+                                    row["CV(%)"], row["n(QC)"], row["Working_Days"], row["Ratio"]
+                                ))
+                                saved_rows += 1
+
+                            conn.commit()
+                            cursor.close()
+                            conn.close()
+
+                            if saved_rows > 0:
+                                st.success(f"✅ Data saved and submitted into battlefield successfully !")
+                                time.sleep(3)
                                 
-                    submission_count = count_current_month_submissions(lab)
+                                submission_count = count_current_month_submissions(lab)
                                 
-                    missing_params = check_required_parameters(lab)
-                    if missing_params:
+                                missing_params = check_required_parameters(lab)
+                                if missing_params:
                                     st.warning("⚠️ Still missing submissions for:")
                                     time.sleep(2)
                                     for param in missing_params:
                                         st.write(f"- {param}")
-                    else:
+                                else:
                                     st.success("✅ All required test submitted! You're ready for battle!")
                                     time.sleep(2)
 
-                    if "llkk_data" not in st.session_state:
+                                if "llkk_data" not in st.session_state:
                                     st.session_state["llkk_data"] = df
-                    else:
+                                else:
                                     st.session_state["llkk_data"] = pd.concat(
                                         [st.session_state["llkk_data"], df], ignore_index=True
                                     )
                                     
-                    st.rerun()
-            else:
+                                st.rerun()
+                    else:
                         st.warning("⚠️ Please complete all fields before submitting.")
                         st.session_state[submission_key] = False  
         else:
