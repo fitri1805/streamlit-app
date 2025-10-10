@@ -719,8 +719,10 @@ def run():
             "Triglycerides", "Urea", "Uric Acid"
         ])
         levels = ["L1", "L2"]
+        current_month_num = date.today().month
         months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        current_month = months[current_month_num - 1]
 
         num_rows = st.number_input("🔢 How many entries to input?", min_value=1, max_value=50, value=5, step=1)
 
@@ -734,7 +736,7 @@ def run():
             cols = st.columns(7)
             parameter = cols[0].selectbox("Parameter", parameters, key=f"param_{i}")
             level = cols[1].selectbox("Level", levels, key=f"level_{i}")
-            month = cols[2].selectbox("Month", months, key=f"month_{i}")
+            month = cols[2].text_input("Month", value=current_month, disabled=True, key=f"month_{i}")
             cv = cols[3].number_input("CV(%)", min_value=0.0, max_value=100.0, key=f"cv_{i}")
             n_qc = cols[4].number_input("n(QC)", min_value=0, max_value=100, key=f"n_{i}")
             wd = cols[5].number_input("Working_Days", min_value=1, max_value=31, key=f"wd_{i}")
@@ -742,29 +744,29 @@ def run():
             # Calculate ratio and validate
             ratio = round(n_qc / wd, 2) if n_qc > 0 and wd > 0 else 0.0
             
-            ratio_error = validate_ratio(n_qc, wd, parameter, level, month)
+            ratio_error = validate_ratio(n_qc, wd, parameter, level, current_month)
             if ratio_error:
                 validation_errors.append(ratio_error)
             
             cols[6].number_input("Ratio", value=ratio, disabled=True, key=f"ratio_{i}")
 
             # Check duplicate parameter-month-level 
-            existing_count = check_existing_parameter_month(lab, parameter, month, level)
+            existing_count = check_existing_parameter_month(lab, parameter, current_month, level)
             if existing_count > 0:
-                validation_errors.append(f" {parameter} - {level} for {month} already exists!")
+                validation_errors.append(f" {parameter} - {level} for {current_month} already exists!")
             
             # Check ratio consistency 
-            existing_ratio = get_parameter_ratio(lab, parameter, month)
+            existing_ratio = get_parameter_ratio(lab, parameter, current_month)
             if existing_ratio is not None and ratio != existing_ratio:
-                if (parameter, month) not in seen_ratio_errors:
-                    validation_errors.append(f"Ratio for {parameter} in {month} must be the same for both levels!")
-                    seen_ratio_errors.add((parameter, month))
+                if (parameter, current_month) not in seen_ratio_errors:
+                    validation_errors.append(f"Ratio for {parameter} in {current_month} must be the same for both levels!")
+                    seen_ratio_errors.add((parameter, current_month))
 
             input_data.append({
                 "Lab": lab,
                 "Parameter": parameter,
                 "Level": level,
-                "Month": month,
+                "Month": current_month,
                 "CV(%)": cv,
                 "n(QC)": n_qc,
                 "Working_Days": wd,
@@ -776,7 +778,6 @@ def run():
             if data["n(QC)"] > 0 and data["Working_Days"] > 0:
                 ratio = data["n(QC)"] / data["Working_Days"]
                 if ratio >= 1:
-                    data["Ratio"] = ratio
                     df = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
         
         st.subheader("Preview of Valid Entries")
