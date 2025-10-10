@@ -122,7 +122,7 @@ def get_connection():
 
 st.title("📝 Create a New Account")
 
-new_username = st.text_input("Username")
+new_username = st.text_input("Clinic Name")
 new_password = st.text_input("Password", type="password")
 new_role = st.selectbox("Role", ["lab", "admin"])
 
