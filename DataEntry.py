@@ -771,14 +771,18 @@ def run():
                 "Ratio": ratio
             })
 
-        df = pd.DataFrame()
+        valid_entries = []
         for data in input_data:
             if data["n(QC)"] > 0 and data["Working_Days"] > 0:
                 ratio = data["n(QC)"] / data["Working_Days"]
                 if ratio >= 1:
-                    data["Ratio"] = ratio
-                    df = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
-        
+                    # Create a copy with updated ratio
+                    valid_data = data.copy()
+                    valid_data["Ratio"] = ratio
+                    valid_entries.append(valid_data)
+
+        df = pd.DataFrame(valid_entries)
+
         st.subheader("Preview of Valid Entries")
         if not df.empty:
             st.dataframe(df)
