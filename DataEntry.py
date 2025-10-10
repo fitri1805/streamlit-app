@@ -187,6 +187,11 @@ DATA_DIR = "data"
 
 def run():
     apply_sidebar_theme()
+
+    if "initialized" not in st.session_state:
+        st.session_state.initialized = True
+        st.session_state.prevent_rerun = False
+        
     st.markdown("""
     <style>
     /* MLBB Color Palette */
