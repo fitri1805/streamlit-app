@@ -441,7 +441,7 @@ def get_db_connection():
 
 def is_battle_started():
     today = date.today()
-    return today.day >= 15
+    return today.day >= 20
 
 def get_available_months():
     conn = get_db_connection()
@@ -642,19 +642,19 @@ def run():
     </div>
     """, unsafe_allow_html=True)
 
-    # Check if battle has started (after 15th of month)
+    # Check if battle has started (after 20th of month)
     if not is_battle_started():
         today = date.today()
-        days_left = 15 - today.day
+        days_left = 20 - today.day
         
         st.markdown("""
         <div class="battle-status">
             <h2>⏳ The Battle Arena is Sealed</h2>
-            <p>The ancient battlegrounds remain locked until the 15th day of each moon cycle.</p>
+            <p>The ancient battlegrounds remain locked until the 20th day of each moon cycle.</p>
         </div>
         """, unsafe_allow_html=True)
         
-        if today.day < 15:
+        if today.day < 20:
             st.markdown(f"""
             <div class="countdown-text">
                 🗓️ {days_left} days until the gates open...
