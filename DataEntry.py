@@ -41,6 +41,17 @@ def count_current_month_submissions(lab):
     
     return count
 
+def get_user_parameters(lab):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT selected_parameters FROM labs_users WHERE username = %s", (lab,))
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
+    
+    if result and result[0]:
+        return result[0].split(',')
+    return []
 
 def check_required_parameters(lab):
     today = date.today()
@@ -55,15 +66,10 @@ def check_required_parameters(lab):
     submitted_df = pd.read_sql(query, conn, params=[lab, current_month, current_year])
     conn.close()
     
-    all_parameters = sorted([
-        "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
-        "Creatinine", "ALP", "Glucose", "HDL Cholesterol",
-        "CL", "Potassium", "Protein (Total)", "Sodium",
-        "Triglycerides", "Urea", "Uric Acid"
-    ])
+    user_parameters = get_user_parameters(lab)
     
     missing_params = []
-    for param in all_parameters:
+    for param in user_parameters:  
         param_data = submitted_df[submitted_df['Parameter'] == param]
         if len(param_data) == 0:
             missing_params.append(f"{param} (both levels)")
@@ -365,19 +371,21 @@ def run():
     lab = st.session_state["logged_in_lab"]
     
     if not is_submission_allowed():
-        st.error("🚫 Data submission is only allowed from the 1st to the 19th of each month.")
-        st.info("The battle begins on the 20th. Please come back next month for data submission.")
+        st.error("🚫 Data submission is only allowed from the 1st to the 14th of each month.")
+        st.info("The battle begins on the 15th. Please come back next month for data submission.")
         st.stop()
     
+    user_parameters = get_user_parameters(lab)
+    expected_total = len(user_parameters) * 2
     submission_count = count_current_month_submissions(lab)
     missing_params = check_required_parameters(lab)
     
     status_col1, status_col2 = st.columns([1, 3])
     with status_col1:
-        if submission_count == 32 and not missing_params:
-            st.success(f"✅ Ready for battle! ({submission_count}/32)") 
+        if submission_count == expected_total and not missing_params:
+            st.success(f"✅ Ready for battle! ({submission_count}/{expected_total})") 
         else:
-            st.warning(f"⚠️ Incomplete ({submission_count}/32)")
+            st.warning(f"⚠️ Incomplete ({submission_count}/{expected_total})")
     
     with status_col2:
         today = date.today()
@@ -388,7 +396,7 @@ def run():
         with st.expander("Show missing parameters", expanded=False):
             st.warning("⚠️ Missing submissions for:")  
             for param in missing_params:
-                st.write(f"- {param}")   
+                st.write(f"- {param}")  
    
     all_submissions_df = get_all_submissions(lab)
     
@@ -709,9 +717,15 @@ def run():
                         st.session_state.edit_mode = False
                         st.rerun()
 
+    user_parameters = get_user_parameters(lab)
+    expected_total = len(user_parameters) * 2
+    submission_count = count_current_month_submissions(lab)
+    missing_params = check_required_parameters(lab)
     
-    if not st.session_state.edit_mode:
+    all_data_complete = (submission_count == expected_total and not missing_params)
     
+    if not all_data_complete and not st.session_state.edit_mode:
+        
         parameters = sorted([
             "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
             "Creatinine", "ALP", "Glucose", "HDL Cholesterol",
@@ -724,54 +738,99 @@ def run():
                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
         current_month = months[current_month_num - 1]
 
-        num_rows = st.number_input("🔢 How many entries to input?", min_value=1, max_value=50, value=5, step=1)
-
         st.subheader(f"Enter Data for: :green[{lab}]")
+            
+        default_col1, default_col2 = st.columns(2)
+    
+        with default_col1:
+            default_wd = st.number_input(
+                "Default Working Days", 
+                min_value=1, 
+                max_value=31, 
+                value=24,
+                key="default_wd",
+                help="This value will apply to ALL parameters"
+            )
+        
+        with default_col2:
+            default_n_qc = st.number_input(
+                "Default n(QC)", 
+                min_value=0, 
+                max_value=100, 
+                value=0,
+                key="default_n_qc",
+                help="This is the default value, but you can change it for each parameter"
+            )
 
         input_data = []
         validation_errors = []
         seen_ratio_errors = set()
         
-        for i in range(num_rows):
-            cols = st.columns(7)
-            parameter = cols[0].selectbox("Parameter", parameters, key=f"param_{i}")
-            level = cols[1].selectbox("Level", levels, key=f"level_{i}")
-            month = cols[2].text_input("Month", value=current_month, disabled=True, key=f"month_{i}")
-            cv = cols[3].number_input("CV(%)", min_value=0.0, max_value=100.0, key=f"cv_{i}")
-            n_qc = cols[4].number_input("n(QC)", min_value=0, max_value=100, key=f"n_{i}")
-            wd = cols[5].number_input("Working_Days", min_value=1, max_value=31, key=f"wd_{i}")
-            
-            # Calculate ratio and validate
-            ratio = round(n_qc / wd, 2) if n_qc > 0 and wd > 0 else 0.0
-            
-            ratio_error = validate_ratio(n_qc, wd, parameter, level, current_month)
-            if ratio_error:
-                validation_errors.append(ratio_error)
-            
-            cols[6].number_input("Ratio", value=ratio, disabled=True, key=f"ratio_{i}")
+        if "parameter_n_qc" not in st.session_state:
+            st.session_state.parameter_n_qc = {}
 
-            # Check duplicate parameter-month-level 
-            existing_count = check_existing_parameter_month(lab, parameter, current_month, level)
-            if existing_count > 0:
-                validation_errors.append(f" {parameter} - {level} for {current_month} already exists!")
+        entry_counter = 0
+        for parameter in sorted(user_parameters):
+            for level in ["L1", "L2"]:
+                cols = st.columns(7)
+                    
+                cols[0].text_input("Parameter", value=parameter, disabled=True, key=f"param_{entry_counter}")
+                    
+                cols[1].text_input("Level", value=level, disabled=True, key=f"level_{entry_counter}")
+                    
+                month = cols[2].text_input("Month", value=current_month, disabled=True, key=f"month_{entry_counter}")
+                cv = cols[3].number_input("CV(%)", min_value=0.0, max_value=100.0, key=f"cv_{entry_counter}")
+                
+                n_qc_key = f"n_{parameter}_{level}"
+                current_n_qc = st.session_state.parameter_n_qc.get(n_qc_key, default_n_qc)
+                n_qc = cols[4].number_input(
+                    "n(QC)", 
+                    min_value=0, 
+                    max_value=100, 
+                    value=current_n_qc,
+                    key=f"n_{entry_counter}",
+                    on_change=lambda p=parameter, l=level, k=f"n_{entry_counter}": st.session_state.parameter_n_qc.update({f"n_{p}_{l}": st.session_state[k]})
+                )
             
-            # Check ratio consistency 
-            existing_ratio = get_parameter_ratio(lab, parameter, current_month)
-            if existing_ratio is not None and ratio != existing_ratio:
-                if (parameter, current_month) not in seen_ratio_errors:
-                    validation_errors.append(f"Ratio for {parameter} in {current_month} must be the same for both levels!")
-                    seen_ratio_errors.add((parameter, current_month))
+                wd = cols[5].number_input(
+                    "Working_Days", 
+                    min_value=1, 
+                    max_value=31, 
+                    value=default_wd,
+                    disabled=True, 
+                    key=f"wd_{entry_counter}"
+                )
+                    
+                ratio = round(n_qc / wd, 2) if n_qc > 0 and wd > 0 else 0.0
+                    
+                ratio_error = validate_ratio(n_qc, wd, parameter, level, current_month)
+                if ratio_error:
+                    validation_errors.append(ratio_error)
 
-            input_data.append({
-                "Lab": lab,
-                "Parameter": parameter,
-                "Level": level,
-                "Month": current_month,
-                "CV(%)": cv,
-                "n(QC)": n_qc,
-                "Working_Days": wd,
-                "Ratio": ratio
-            })
+                cols[6].number_input("Ratio", value=ratio, disabled=True, key=f"ratio_{entry_counter}")
+
+                existing_count = check_existing_parameter_month(lab, parameter, current_month, level)
+                if existing_count > 0:
+                    validation_errors.append(f" {parameter} - {level} for {current_month} already exists!")
+                
+                existing_ratio = get_parameter_ratio(lab, parameter, current_month)
+                if existing_ratio is not None and ratio != existing_ratio:
+                    if (parameter, current_month) not in seen_ratio_errors:
+                        validation_errors.append(f"Ratio for {parameter} in {current_month} must be the same for both levels!")
+                        seen_ratio_errors.add((parameter, current_month))
+
+                input_data.append({
+                    "Lab": lab,
+                    "Parameter": parameter,
+                    "Level": level,
+                    "Month": current_month,
+                    "CV(%)": cv,
+                    "n(QC)": n_qc,
+                    "Working_Days": wd,
+                    "Ratio": ratio
+                })
+                
+                entry_counter += 1
 
         df = pd.DataFrame()
         for data in input_data:
@@ -847,31 +906,29 @@ def run():
                                 st.success(f"✅ Data saved and submitted into battlefield successfully !")
                                 time.sleep(3)
                                 
-                                submission_count = count_current_month_submissions(lab)
+                                st.session_state.parameter_n_qc = {}
                                 
-                                missing_params = check_required_parameters(lab)
-                                if missing_params:
-                                    st.warning("⚠️ Still missing submissions for:")
-                                    time.sleep(2)
-                                    for param in missing_params:
-                                        st.write(f"- {param}")
-                                else:
-                                    st.success("✅ All required test submitted! You're ready for battle!")
-                                    time.sleep(2)
-
-                                if "llkk_data" not in st.session_state:
-                                    st.session_state["llkk_data"] = df
-                                else:
-                                    st.session_state["llkk_data"] = pd.concat(
-                                        [st.session_state["llkk_data"], df], ignore_index=True
-                                    )
-                                    
                                 st.rerun()
                     else:
                         st.warning("⚠️ Please complete all fields before submitting.")
                         st.session_state[submission_key] = False  
         else:
             st.button("💾 Submit to battle", disabled=True, help="Submission already made. Refresh page to submit again.")
+    
+    elif all_data_complete and not st.session_state.edit_mode:
+        st.info("The data entry form is hidden because all required parameters have been submitted.")
+        
+        if not view_df.empty:
+            csv_data = view_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Submitted Data",
+                data=csv_data,
+                file_name=f"{lab}_llkk_data_entry.csv",
+                mime="text/csv",
+                key="download_submitted_data"
+            )
+        else:
+            st.info("No submitted data available to download")
 
 if __name__ == "__main__":
     run()

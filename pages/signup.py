@@ -22,7 +22,7 @@ st.markdown("""
         flex-direction: column;
         justify-content: space-between;
         cursor: pointer;
-        margin-bottom: 5px; /* Fixed margin to prevent movement */
+        margin-bottom: 5px;
     }
 
     .avatar-card:hover {
@@ -91,23 +91,6 @@ st.markdown("""
         border-radius: 12px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.2);
     }
-   
-    .hidden-btn {
-        display: none !important;
-        visibility: hidden !important;
-        height: 0 !important;
-        width: 0 !important;
-        padding: 0 !important;
-        margin: 0 !important;
-    }
-    
-    .admin-note {
-        padding: 10px;
-        border-radius: 5px;
-        border-left: 4px solid #2196f3;
-        margin: 10px 0;
-    }
-    
 </style>  
 """, unsafe_allow_html=True)
 
@@ -119,6 +102,13 @@ def get_connection():
         password="@Cittamall13",         
         database="gamifiedqc" 
     )
+
+ALL_PARAMETERS = sorted([
+    "Albumin", "ALT", "AST", "Bilirubin (Total)", "Cholesterol",
+    "Creatinine", "ALP", "Glucose", "HDL Cholesterol",
+    "CL", "Potassium", "Protein (Total)", "Sodium",
+    "Triglycerides", "Urea", "Uric Acid"
+])
 
 st.title("📝 Create a New Account")
 
@@ -133,41 +123,74 @@ if new_role == "admin":
     </div>
     """, unsafe_allow_html=True)
 
-avatars = {
-    "Zareth":"avatars/zareth.png",
-    "Dreadon":"avatars/Dreadon.png",
-    "Selindra":"avatars/Selindra.png",
-    "Raviel":"avatars/Raviel.png",
-    "Takeshi":"avatars/Takeshi.png",
-    "Synkro":"avatars/Synkro.png",
-    "Zyphira":"avatars/Zyphira.png",
-    "Umbra":"avatars/Umbra.png",
-    "Kaira":"avatars/Kaira.png",
-    "Ignar":"avatars/Ignar.png",
-    "Ryden":"avatars/Ryden.png",
-    "Nyra":"avatars/Nyra.png",
-    "Kaen":"avatars/Kaen.png",
-    "Raika":"avatars/Raika.png",
-    "Dain":"avatars/Dain.png",
-    "Veyra":"avatars/Veyra.png",
-    "Reiko":"avatars/Reiko.png",
-    "Kane & Lyra":"avatars/kanenlyra.png",
-    "Mimi":"avatars/Mimi.png",
-    "Rowan":"avatars/Rowan.png",
-    "Taro":"avatars/Taro.png",
-    "Eldric":"avatars/Eldric.png",
-    "Noel":"avatars/Noel.png",
-    "Elias":"avatars/Elias.png",
-    "Finn":"avatars/Finn.png",
+AVATAR_PATHS = {
+    "Zareth": "avatars/zareth.png",
+    "Dreadon": "avatars/Dreadon.png",
+    "Selindra": "avatars/Selindra.png",
+    "Raviel": "avatars/Raviel.png",
+    "Takeshi": "avatars/Takeshi.png",
+    "Synkro": "avatars/Synkro.png",
+    "Zyphira": "avatars/Zyphira.png",
+    "Umbra": "avatars/Umbra.png",
+    "Kaira": "avatars/Kaira.png",
+    "Ignar": "avatars/Ignar.png",
+    "Ryden": "avatars/Ryden.png",
+    "Nyra": "avatars/Nyra.png",
+    "Kaen": "avatars/Kaen.png",
+    "Raika": "avatars/Raika.png",
+    "Dain": "avatars/Dain.png",
+    "Veyra": "avatars/Veyra.png",
+    "Reiko": "avatars/Reiko.png",
+    "Kane & Lyra": "avatars/kanenlyra.png",
+    "Mimi": "avatars/Mimi.png",
+    "Rowan": "avatars/Rowan.png",
+    "Taro": "avatars/Taro.png",
+    "Eldric": "avatars/Eldric.png",
+    "Noel": "avatars/Noel.png",
+    "Elias": "avatars/Elias.png",
+    "Finn": "avatars/Finn.png",
 }
+
+def load_single_avatar(path):
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return None
+
+if new_role == "lab":
+    st.subheader("🎯 Select Parameters ")
+
+    if st.button("✅ Select All Parameters", key="select_all"):
+        st.session_state.selected_parameters = ALL_PARAMETERS.copy()
+
+    if "selected_parameters" not in st.session_state:
+        st.session_state.selected_parameters = []
+
+    st.markdown("**Available Parameters:**")
+
+    cols = st.columns(4)
+    
+    for i, param in enumerate(ALL_PARAMETERS):
+        with cols[i % 4]:
+            is_checked = param in st.session_state.selected_parameters
+            if st.checkbox(param, value=is_checked, key=f"param_{param}"):
+                if param not in st.session_state.selected_parameters:
+                    st.session_state.selected_parameters.append(param)
+            else:
+                if param in st.session_state.selected_parameters:
+                    st.session_state.selected_parameters.remove(param)
+
+    if st.session_state.selected_parameters:
+        st.success(f"✅ Selected {len(st.session_state.selected_parameters)} parameters")
+    else:
+        st.warning("⚠️ Please select at least one parameter")
 
 if new_role == "lab":
     st.markdown("🎭 **Choose Your Avatar**")
 
-# session state
+# Initialize session state
 if "selected_avatar" not in st.session_state:
     st.session_state.selected_avatar = None
-
 
 def check_username_exists(username):
     """Check if username already exists in database"""
@@ -182,10 +205,7 @@ def check_username_exists(username):
     conn.close()
     return result
 
-def img_to_base64(path):
-    with open(path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
-
+@st.cache_data(ttl=30) 
 def get_used_avatars():
     conn = get_connection()
     cur = conn.cursor()
@@ -199,12 +219,13 @@ if new_role == "lab":
     used_avatars = get_used_avatars()
     cols = st.columns(4)
 
-    for i, (name, path) in enumerate(avatars.items()):
+    for i, (name, path) in enumerate(AVATAR_PATHS.items()):
         with cols[i % 4]:
-            if os.path.exists(path):
-                img_base64 = img_to_base64(path)
-                
-                is_used = name in used_avatars
+            is_used = name in used_avatars
+            
+            img_base64 = load_single_avatar(path)
+            
+            if img_base64:
                 selected_class = "selected" if st.session_state.selected_avatar == name else ""
 
                 st.markdown(
@@ -219,15 +240,19 @@ if new_role == "lab":
 
                 if st.button(f"Select {name}", key=f"btn-{i}", use_container_width=True, disabled=is_used):
                     st.session_state.selected_avatar = name
-                    st.rerun()  
+                    st.rerun()
+            else:
+                st.error(f"Image not found: {path}")
 
-                st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
+            st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
 
 if st.button("Create Account"):
     if new_username and check_username_exists(new_username):
         st.error("❌ Username already exists! Please choose a different username.")
     elif new_role == "lab" and not st.session_state.selected_avatar:
         st.warning("⚠️ Please choose an avatar before creating your account.")
+    elif new_role == "lab" and not st.session_state.selected_parameters:
+        st.warning("⚠️ Please select at least one parameter before creating your account.")
     elif not new_username or not new_password:
         st.warning("⚠️ Please fill all fields.")
     else:
@@ -236,33 +261,19 @@ if st.button("Create Account"):
             cur = conn.cursor()
             if new_role == "admin":
                 avatar_value = None 
+                parameters_value = None 
             else:
                 avatar_value = st.session_state.selected_avatar
+                parameters_value = ",".join(sorted(st.session_state.selected_parameters))
             cur.execute(
-                "INSERT INTO labs_users (username, password, role, avatar) VALUES (%s, %s, %s, %s)",
-                (new_username, new_password, new_role, avatar_value),
+                "INSERT INTO labs_users (username, password, role, avatar, selected_parameters) VALUES (%s, %s, %s, %s, %s)",
+                (new_username, new_password, new_role, avatar_value, parameters_value),
             )
             conn.commit()
             cur.close()
             conn.close()
             st.success("✅🎉 Account Created Successfully! Go back to Login.")
             st.session_state.selected_avatar = None
+            st.session_state.selected_parameters = []
         except mysql.connector.Error as err:
             st.error(f"❌ Database error: {err}")
-
-st.markdown("""
-    <style>
-    @media (max-width: 768px) {
-        .stDataFrame {
-            font-size: 12px;
-        }
-        .stButton > button {
-            width: 100%;
-            margin: 5px 0;
-        }
-        .stSelectbox, .stTextInput {
-            width: 100% !important;
-        }
-    }
-    </style>
-    """, unsafe_allow_html=True)
