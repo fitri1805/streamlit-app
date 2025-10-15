@@ -2,7 +2,6 @@ import streamlit as st
 import mysql.connector
 import os
 import base64
-import requests
 
 st.set_page_config(
     page_title="LLKK - Lab Legend Kingdom Kvalis",
@@ -163,6 +162,7 @@ if new_role == "lab":
 
     if st.button("✅ Select All Parameters", key="select_all"):
         st.session_state.selected_parameters = ALL_PARAMETERS.copy()
+        st.rerun()
 
     if "selected_parameters" not in st.session_state:
         st.session_state.selected_parameters = []
