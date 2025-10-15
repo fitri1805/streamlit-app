@@ -165,20 +165,38 @@ if new_role == "lab":
 
     if st.button("✅ Select All Parameters", key="select_all"):
         st.session_state.selected_parameters = ALL_PARAMETERS.copy()
+        st.experimental_set_query_params(select_all="true")
+        st.rerun()
+
+    query_params = st.experimental_get_query_params()
+    if "select_all" in query_params:
+        st.session_state.selected_parameters = ALL_PARAMETERS.copy()
+        st.experimental_set_query_params()
+        st.rerun()
 
     st.markdown("**Available Parameters:**")
 
     cols = st.columns(4)
     
+    current_selections = st.session_state.selected_parameters.copy()
+    
     for i, param in enumerate(ALL_PARAMETERS):
         with cols[i % 4]:
-            is_checked = param in st.session_state.selected_parameters
-            if st.checkbox(param, value=is_checked, key=f"param_{param}"):
-                if param not in st.session_state.selected_parameters:
-                    st.session_state.selected_parameters.append(param)
-            else:
-                if param in st.session_state.selected_parameters:
-                    st.session_state.selected_parameters.remove(param)
+            is_checked = param in current_selections
+            
+            checkbox_state = st.checkbox(
+                param, 
+                value=is_checked, 
+                key=f"param_{param}",
+                on_change=None
+            )
+            
+            if checkbox_state and param not in current_selections:
+                current_selections.append(param)
+            elif not checkbox_state and param in current_selections:
+                current_selections.remove(param)
+
+    st.session_state.selected_parameters = current_selections
 
     if st.session_state.selected_parameters:
         st.success(f"✅ Selected {len(st.session_state.selected_parameters)} parameters")
