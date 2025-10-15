@@ -207,7 +207,7 @@ def check_username_exists(username):
     except:
         return False
 
-@st.cache_data(ttl=30) 
+@st.cache_data(ttl=300) 
 def get_used_avatars():
     conn = get_connection()
     cur = conn.cursor()
