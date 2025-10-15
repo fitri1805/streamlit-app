@@ -162,6 +162,8 @@ if new_role == "lab":
 
     if st.button("✅ Select All Parameters", key="select_all"):
         st.session_state.selected_parameters = ALL_PARAMETERS.copy()
+        for param in ALL_PARAMETERS:
+            st.session_state[f"param_{param}_state"] = True
         st.rerun()
 
     if "selected_parameters" not in st.session_state:
