@@ -164,14 +164,14 @@ if new_role == "lab":
         st.session_state.selected_parameters = []
 
     if st.button("✅ Select All Parameters", key="select_all"):
+
         st.session_state.selected_parameters = ALL_PARAMETERS.copy()
-        st.experimental_set_query_params(select_all="true")
+        st.query_params["select_all"] = "true"
         st.rerun()
 
-    query_params = st.experimental_get_query_params()
-    if "select_all" in query_params:
+    if "select_all" in st.query_params:
         st.session_state.selected_parameters = ALL_PARAMETERS.copy()
-        st.experimental_set_query_params()
+        del st.query_params["select_all"]
         st.rerun()
 
     st.markdown("**Available Parameters:**")
@@ -187,8 +187,7 @@ if new_role == "lab":
             checkbox_state = st.checkbox(
                 param, 
                 value=is_checked, 
-                key=f"param_{param}",
-                on_change=None
+                key=f"param_{param}"
             )
             
             if checkbox_state and param not in current_selections:
