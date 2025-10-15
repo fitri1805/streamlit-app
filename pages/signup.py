@@ -2,6 +2,7 @@ import streamlit as st
 import mysql.connector
 import os
 import base64
+import requests
 
 st.set_page_config(
     page_title="LLKK - Lab Legend Kingdom Kvalis",
@@ -193,17 +194,18 @@ if "selected_avatar" not in st.session_state:
     st.session_state.selected_avatar = None
 
 def check_username_exists(username):
-    """Check if username already exists in database"""
     if not username or len(username.strip()) == 0:
         return False
-    
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT username FROM labs_users WHERE username = %s", (username.strip(),))
-    result = cur.fetchone() is not None
-    cur.close()
-    conn.close()
-    return result
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT username FROM labs_users WHERE username = %s", (username,))
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+        return result is not None
+    except:
+        return False
 
 @st.cache_data(ttl=30) 
 def get_used_avatars():
