@@ -160,12 +160,11 @@ def load_single_avatar(path):
 if new_role == "lab":
     st.subheader("🎯 Select Parameters ")
 
-    if st.button("✅ Select All Parameters", key="select_all"):
-        st.session_state.selected_parameters = ALL_PARAMETERS.copy()
-        st.rerun()
-
     if "selected_parameters" not in st.session_state:
         st.session_state.selected_parameters = []
+
+    if st.button("✅ Select All Parameters", key="select_all"):
+        st.session_state.selected_parameters = ALL_PARAMETERS.copy()
 
     st.markdown("**Available Parameters:**")
 
