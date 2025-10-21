@@ -178,16 +178,32 @@ def insert_submission(data):
 
 def save_monthly_final(month, lab, lab_rank, monthly_final_elo):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    if conn is None:
+        st.error("❌ Cannot save monthly final: Database connection failed")
+        return False
     
-    cursor.execute("""
-        INSERT INTO monthly_final (month, lab, lab_rank, monthly_final_elo)
-        VALUES (%s, %s, %s, %s)
-        ON DUPLICATE KEY UPDATE lab_rank = %s, monthly_final_elo = %s
-    """, (month, lab, lab_rank, monthly_final_elo, lab_rank, monthly_final_elo))
-    
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        
+        # Debug print
+        st.write(f"🏆 Saving monthly final: {lab}, Month: {month}, Rank: {lab_rank}, ELO: {monthly_final_elo}")
+        
+        cursor.execute("""
+            INSERT INTO monthly_final (month, lab, lab_rank, monthly_final_elo)
+            VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE lab_rank = %s, monthly_final_elo = %s
+        """, (month, lab, lab_rank, monthly_final_elo, lab_rank, monthly_final_elo))
+        
+        conn.commit()
+        st.success(f"✅ Successfully saved monthly final for {lab}")
+        return True
+        
+    except mysql.connector.Error as e:
+        st.error(f"❌ Database error saving monthly final: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
 
 def get_monthly_final(month=None):
    
@@ -2610,16 +2626,32 @@ def update_lab_rating(lab, parameter, level, rating):
 
 def save_monthly_ranking(lab, parameter, level, month, elo_before_bonus, bonus, final_elo, ranking):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    if conn is None:
+        st.error("❌ Cannot save monthly ranking: Database connection failed")
+        return False
     
-    cursor.execute("""
-        INSERT INTO monthly_rankings 
-        (lab, parameter, level, month, elo_before_bonus, bonus, final_elo, ranking)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    """, (lab, parameter, level, month, elo_before_bonus, bonus, final_elo, ranking))
-    
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        
+        # Debug print
+        st.write(f"💾 Saving monthly ranking: {lab}, {parameter}, {level}, {month}, Rank: {ranking}")
+        
+        cursor.execute("""
+            INSERT INTO monthly_rankings 
+            (lab, parameter, level, month, elo_before_bonus, bonus, final_elo, ranking)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (lab, parameter, level, month, elo_before_bonus, bonus, final_elo, ranking))
+        
+        conn.commit()
+        st.success(f"✅ Successfully saved ranking for {lab}")
+        return True
+        
+    except mysql.connector.Error as e:
+        st.error(f"❌ Database error saving monthly ranking: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
 
 def get_previous_month_rankings(current_month):   
     if not current_month:
@@ -2680,7 +2712,6 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
         return
     
     st.session_state.simulation_run_this_month = True
-
     st.session_state.simulation_months = selected_months if not run_all_months else None
     st.session_state.run_all_months = run_all_months
 
@@ -2928,16 +2959,32 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                   st.dataframe(df_table)
                   
                   for _, row in df_table.iterrows():
-                      save_monthly_ranking(
-                          lab=row["Lab"],
-                          parameter=param,
-                          level=level,
-                          month=row["Month"],
-                          elo_before_bonus=row["Elo (before bonus)"],
-                          bonus=int(row["Bonus"].replace("+", "")),
-                          final_elo=row["Final Elo"],
-                          ranking=row["Rank"]
-                       )
+                    st.write("🔍 DEBUG - About to save monthly ranking:")
+                    st.write(f"  Lab: {row['Lab']}, Parameter: {param}, Level: {level}")
+                    st.write(f"  Month: {row['Month']}, Rank: {row['Rank']}")
+                    st.write(f"  ELO Before Bonus: {row['Elo (before bonus)']}, Bonus: {row['Bonus']}, Final ELO: {row['Final Elo']}")
+
+                    save_monthly_ranking(
+                        lab=row["Lab"],
+                        parameter=param,
+                        level=level,
+                        month=row["Month"],
+                        elo_before_bonus=row["Elo (before bonus)"],
+                        bonus=int(row["Bonus"].replace("+", "")),
+                        final_elo=row["Final Elo"],
+                        ranking=row["Rank"]
+                    )
+
+                    st.write("🔍 DEBUG - About to save monthly final:")
+                    st.write(f"  Lab: {row['Lab']}, Month: {row['Month']}")
+                    st.write(f"  Rank: {row['Rank']}, Final ELO: {round(row['Final Elo'], 2)}")
+
+                    save_monthly_final(
+                        month=row["Month"],
+                        lab=row["Lab"],
+                        lab_rank=row["Rank"],
+                        monthly_final_elo=round(row["Final Elo"], 2)
+                    )
 
     if summary_tables:
         monthly = pd.concat(summary_tables)
