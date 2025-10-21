@@ -3023,7 +3023,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                           bonus=int(row["Bonus"].replace("+", "")),
                           final_elo=row["Final Elo"],
                           ranking=row["Rank"]
-                       )
+                    )
 
     if summary_tables:
         monthly = pd.concat(summary_tables)
@@ -3050,7 +3050,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
 
     st.session_state.simulation_results = {
         "summary_tables": summary_tables,
-    }
+    }  
 
     st.session_state["elo_history"] = ratings
     st.session_state["elo_progression"] = pd.DataFrame(rating_progression)
