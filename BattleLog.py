@@ -2779,7 +2779,6 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                 if lab_key not in ratings:
                     ratings[lab_key] = rating_lookup.get(lab_key, 1500)
 
-         
             expected_labs = all_labs
             actual_labs = group["Lab"].unique()
             missing_labs = set(expected_labs) - set(actual_labs)
@@ -2801,7 +2800,6 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                 labA_key = f"{labA}_{key_prefix}"
                 labB_key = f"{labB}_{key_prefix}"
 
-              
                 if pd.isna(cvA) and pd.isna(cvB):
                     cv_score_A = cv_score_B = 0.5
                 elif pd.isna(cvA):
@@ -2815,7 +2813,6 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                 else:
                     cv_score_A = cv_score_B = 0.5
 
-              
                 if pd.isna(rA) and pd.isna(rB):
                     ratio_score_A = ratio_score_B = 0.5
                 elif pd.isna(rA):
@@ -2871,7 +2868,6 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                   month=month  
               )
 
-            
             for lab in group["Lab"].unique():
                 lab_key = f"{lab}_{key_prefix}"
                 cv_value = group[group["Lab"] == lab]["CV(%)"].values[0]
@@ -2919,46 +2915,59 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
     if len(summary_df) >= 3: summary_df.loc[2, "Medal"] = "🥉"
   
     summary_tables = []
+    monthly_rankings_data = []
+    
     for month in months_to_process:
-          month_data = df[df["Month"] == month]
-          
-          for (param, level), group in month_data.groupby(["Parameter", "Level"]):
-              rows = []
-              for lab in group["Lab"].unique():
-                  lab_key = f"{lab}_{param}_{level}"
-                  if lab_key in ratings:
-                      current_rating = ratings[lab_key]
-                      
-                      cv = group[group["Lab"] == lab]["CV(%)"].values[0]
-                      ratio_val = group[group["Lab"] == lab]["Ratio"].values[0]
+        month_data = df[df["Month"] == month]
+        
+        for (param, level), group in month_data.groupby(["Parameter", "Level"]):
+            rows = []
+            for lab in group["Lab"].unique():
+                lab_key = f"{lab}_{param}_{level}"
+                if lab_key in ratings:
+                    current_rating = ratings[lab_key]
+                    
+                    cv = group[group["Lab"] == lab]["CV(%)"].values[0]
+                    ratio_val = group[group["Lab"] == lab]["Ratio"].values[0]
 
-                      cv_bonus = 5 if (not pd.isna(cv) and param in EFLM_TARGETS and cv <= EFLM_TARGETS[param]) else 0
-                      ratio_bonus = 5 if (not pd.isna(ratio_val) and ratio_val == 1.0) else 0
-                      bonus = cv_bonus + ratio_bonus
+                    cv_bonus = 5 if (not pd.isna(cv) and param in EFLM_TARGETS and cv <= EFLM_TARGETS[param]) else 0
+                    ratio_bonus = 5 if (not pd.isna(ratio_val) and ratio_val == 1.0) else 0
+                    bonus = cv_bonus + ratio_bonus
 
-                      elo_before_bonus = current_rating - bonus
-                      final_elo = current_rating
+                    elo_before_bonus = current_rating - bonus
+                    final_elo = current_rating
 
-                      rows.append({
-                          "Lab": lab,
-                          "Test": param,
-                          "Level": level,
-                          "Month": month,
-                          "Elo (before bonus)": round(elo_before_bonus, 1),
-                          "Bonus": f"+{bonus}",
-                          "Final Elo": round(final_elo, 1)
-                      })
+                    row_data = {
+                        "Lab": lab,
+                        "Test": param,
+                        "Level": level,
+                        "Month": month,
+                        "Elo (before bonus)": round(elo_before_bonus, 1),
+                        "Bonus": f"+{bonus}",
+                        "Final Elo": round(final_elo, 1)
+                    }
+                    rows.append(row_data)
+                    
+                    monthly_rankings_data.append({
+                        "lab": lab,
+                        "parameter": param,
+                        "level": level,
+                        "month": month,
+                        "elo_before_bonus": round(elo_before_bonus, 1),
+                        "bonus": bonus,
+                        "final_elo": round(final_elo, 1)
+                    })
 
-              if rows:
-                  df_table = pd.DataFrame(rows).sort_values("Final Elo", ascending=False).reset_index(drop=True)
-                  df_table.index += 1
-                  df_table.insert(0, "Rank", df_table.index)
-                  summary_tables.append(df_table)
+            if rows:
+                df_table = pd.DataFrame(rows).sort_values("Final Elo", ascending=False).reset_index(drop=True)
+                df_table.index += 1
+                df_table.insert(0, "Rank", df_table.index)
+                summary_tables.append(df_table)
 
-                  st.markdown(f"### {param} — {level} (Month: {month}) (target CV {EFLM_TARGETS.get(param, 'n/a')})")
-                  st.dataframe(df_table)
-                  
-                  for _, row in df_table.iterrows():
+                st.markdown(f"### {param} — {level} (Month: {month}) (target CV {EFLM_TARGETS.get(param, 'n/a')})")
+                st.dataframe(df_table)
+                
+                for _, row in df_table.iterrows():
                     st.write("🔍 DEBUG - About to save monthly ranking:")
                     st.write(f"  Lab: {row['Lab']}, Parameter: {param}, Level: {level}")
                     st.write(f"  Month: {row['Month']}, Rank: {row['Rank']}")
@@ -2975,39 +2984,32 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                         ranking=row["Rank"]
                     )
 
-                    st.write("🔍 DEBUG - About to save monthly final:")
-                    st.write(f"  Lab: {row['Lab']}, Month: {row['Month']}")
-                    st.write(f"  Rank: {row['Rank']}, Final ELO: {round(row['Final Elo'], 2)}")
-
-                    save_monthly_final(
-                        month=row["Month"],
-                        lab=row["Lab"],
-                        lab_rank=row["Rank"],
-                        monthly_final_elo=round(row["Final Elo"], 2)
-                    )
-
-    if summary_tables:
-        monthly = pd.concat(summary_tables)
-        monthly_test_avg = monthly.groupby(["Lab", "Test", "Month"])["Final Elo"].mean().reset_index()
-        monthly_final = monthly_test_avg.groupby(["Lab", "Month"])["Final Elo"].mean().reset_index()
+    if monthly_rankings_data:
+        monthly_rankings_df = pd.DataFrame(monthly_rankings_data)
+        
        
+        monthly_final_elos = monthly_rankings_df.groupby(["Lab", "Month"])["final_elo"].mean().reset_index()
+        
         for month in months_to_process:
-            month_data = monthly_final[monthly_final["Month"] == month].copy()
-            month_data = month_data.sort_values("Final Elo", ascending=False).reset_index(drop=True)
-            month_data.index += 1
-            month_data["Rank"] = month_data.index
+            month_final_data = monthly_final_elos[monthly_final_elos["Month"] == month].copy()
+            month_final_data = month_final_data.sort_values("final_elo", ascending=False).reset_index(drop=True)
+            month_final_data.index += 1
+            month_final_data["Rank"] = month_final_data.index
             
-            for _, row in month_data.iterrows():
+            st.markdown(f"### 🏆 Overall Monthly Ranking - {month}")
+            st.dataframe(month_final_data[["Rank", "Lab", "final_elo"]].rename(columns={"final_elo": "Final ELO"}))
+            
+            for _, row in month_final_data.iterrows():
+                st.write("🔍 DEBUG - About to save monthly final:")
+                st.write(f"  Lab: {row['Lab']}, Month: {row['Month']}")
+                st.write(f"  Rank: {row['Rank']}, Final ELO: {round(row['final_elo'], 2)}")
+                
                 save_monthly_final(
                     month=row["Month"],
                     lab=row["Lab"],
                     lab_rank=row["Rank"],
-                    monthly_final_elo=round(row["Final Elo"], 2)
+                    monthly_final_elo=round(row['final_elo'], 2)
                 )
-        
-        st.markdown("### 🏆 Overall Monthly Ranking (Simulated Months)")
-        pivot_data = monthly_final.pivot(index="Lab", columns="Month", values="Final Elo")
-        st.dataframe(pivot_data)
 
     st.session_state.simulation_results = {
         "summary_tables": summary_tables,
