@@ -108,6 +108,7 @@ def get_db_connection():
     )
 
 def fetch_lab_data(lab=None):
+    
     conn = get_db_connection()
     query = "SELECT * FROM submissions"
     params = ()
@@ -121,9 +122,7 @@ def fetch_lab_data(lab=None):
     return df.reset_index(drop=True)
 
 def get_lab_avatars():
-    """
-    Returns {username: avatar_name} mapping
-    """
+    
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT username, avatar FROM labs_users")
@@ -136,6 +135,7 @@ def get_lab_avatars():
     return avatar_map
 
 def get_avatar_data_uri_map():
+    
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT username, avatar FROM labs_users")
@@ -190,6 +190,7 @@ def save_monthly_final(month, lab, lab_rank, monthly_final_elo):
     conn.close()
 
 def get_monthly_final(month=None):
+   
     conn = get_db_connection()
     
     if month:
@@ -227,8 +228,14 @@ def save_battle_log(lab_a, lab_b, winner, loser, updated_rating_a, updated_ratin
     cursor.close()
     conn.close()
 
-def run_battlelog(auto_play=False, user_role="admin", user_lab=None,selected_months=None, show_all_data=True):
-    
+def run_battlelog(auto_play=False, user_role="admin", user_lab=None, selected_months=None, show_all_data=True):
+    try:
+        with open("sounds/cheering.mp3", "rb") as f:
+            b64_audio = base64.b64encode(f.read()).decode()
+    except FileNotFoundError:
+        st.warning("Cheering sound file not found, continuing without audio")
+        b64_audio = "" 
+  
     conn = get_db_connection()
 
     simulation_months = st.session_state.get('simulation_months')
@@ -255,11 +262,6 @@ def run_battlelog(auto_play=False, user_role="admin", user_lab=None,selected_mon
     else:
         monthly_final_df = pd.read_sql("SELECT * FROM monthly_final ORDER BY month DESC, lab_rank ASC", conn)
 
-    battle_logs_df = pd.read_sql(
-        "SELECT * FROM battle_logs ORDER BY CAST(round_num AS UNSIGNED) ASC", 
-        conn
-    )
-
     all_battle_logs_df = pd.read_sql("SELECT * FROM battle_logs ORDER BY CAST(round_num AS UNSIGNED) ASC", conn)
     
     if user_role == "admin":
@@ -285,7 +287,6 @@ def run_battlelog(auto_play=False, user_role="admin", user_lab=None,selected_mon
                 df[col] = df[col].astype(str)
         df = df.where(pd.notnull(df), None)
 
-    # Convert to JSON for frontend
     battle_logs_json = battle_logs_df.to_dict(orient="records")
     monthly_rankings_json = monthly_rankings_df.to_dict(orient="records")
     lab_ratings_json = lab_ratings_df.to_dict(orient="records")
@@ -306,14 +307,11 @@ def run_battlelog(auto_play=False, user_role="admin", user_lab=None,selected_mon
         user_role,
         user_lab,
         selected_months,  
-        show_all_data    
+        show_all_data,
+        b64_audio  
     ), height=1000, scrolling=True)
 
-#audio cheering 
-with open("sounds/cheering.mp3", "rb") as f:
-    b64 = base64.b64encode(f.read()).decode()
-
-def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions, avatar_map, avatar_name_map, auto_play=False, monthly_final=None,user_role="admin", user_lab=None, selected_months=None, show_all_data=True):
+def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions, avatar_map, avatar_name_map, auto_play=False, monthly_final=None, user_role="admin", user_lab=None, selected_months=None, show_all_data=True, b64_audio=""):
 
     selected_months_json = json.dumps(selected_months or [])
     show_all_data_js = str(show_all_data).lower()
@@ -364,7 +362,7 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
     narration_phrases = [
     "💥 First Blood! {attacker} draws first blood!",
     "🔥 {attacker} is on a Killing Spree!",
-    "⚡ Mega Kill! {attacker} can’t be stopped!",
+    "⚡ Mega Kill! {attacker} can't be stopped!",
     "💣 Unstoppable! {attacker} is tearing through the battlefield!",
     "🔥 Dominating! {attacker} shows no mercy!",
     "💥 Savage strike! {attacker} crushes the opposition!",
@@ -397,7 +395,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         min-height: 100vh;
     }}
     """
-
     return f"""
     <html>
     <head>
@@ -411,7 +408,7 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
 
         :root{{ 
         --mlbb-primary: #ff4d8d;
-        --mlbb-secondary: #4a00e0;F
+        --mlbb-secondary: #4a00e0;
         --mlbb-accent: #ff9a8b;
         --mlbb-gold: #ffd700;
         --mlbb-silver: #c0c0c0;
@@ -448,7 +445,7 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
               grid-template-rows: 120px 200px 40px;
               padding: 15px;
               margin: 5px;
-              max-width: 100%; /* biar auto ikut screen */
+              max-width: 100%;
           }}
 
           .avatar {{
@@ -658,7 +655,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           z-index: 1
         }}
 
-        /* Enhanced 3D hover effects */
         .avatar:hover {{
           transform: perspective(800px) rotateX(8deg) rotateY(5deg) translateZ(20px);
           box-shadow: 
@@ -671,7 +667,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
             brightness(1.1);
         }}
 
-        /* 3D depth effect with multiple layers */
         .avatar::before {{
           content: '';
           position: absolute;
@@ -1522,7 +1517,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
             width: 180px; 
         }}
           
-        /* 3D Avatar Effect */
         .avatar-3d {{
             transform: perspective(800px) rotateY(0deg) rotateX(0deg);
             transition: transform 0.5s ease, box-shadow 0.5s ease;
@@ -1534,7 +1528,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
             box-shadow: 0 15px 40px rgba(123, 104, 238, 0.4);
         }}
 
-        /* Enhanced 3D Weapon Styles */
         .weapon-container {{
           position: absolute;
           width: 80px;
@@ -1557,7 +1550,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           transform: scale(1.2) rotate(-15deg);
         }}
         
-        /* Weapon SLASH animations */
         @keyframes weapon-slash-left {{
           0% {{ 
             transform: scale(1.2) rotate(-15deg) translateX(0) translateY(0);
@@ -1604,7 +1596,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           }}
         }}
 
-        /* Apply slash animations */
         .slashing-left {{
           animation: weapon-slash-left 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }}
@@ -1613,7 +1604,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           animation: weapon-slash-right 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }}      
           
-        /* Add a glow effect when attacking */
         @keyframes weapon-glow {{
             0% {{ filter: drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.7)); }}
             50% {{ filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)); }}
@@ -1683,7 +1673,7 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
       </div> 
 
       <audio id="cheer-sound">
-        <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+        <source src="data:audio/mp3;base64,{b64_audio}" type="audio/mp3">
       </audio>
 
       <div class="battle-log">
@@ -1721,7 +1711,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         const selectedMonths = {selected_months_json};
         const showAllData = {show_all_data_js};
 
-        // --- MONTH FILTERING FUNCTION ---
         function filterDataByMonths(data) {{
             if (showAllData || !selectedMonths || selectedMonths.length === 0) {{
                 return data;
@@ -1729,16 +1718,13 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
             return data.filter(item => selectedMonths.includes(item.month));
         }}
 
-        // --- APPLY FILTERS TO ALL DATA ---
         const filteredBattleLogs = filterDataByMonths(battleLogs);
         const filteredMonthlyRankings = filterDataByMonths(monthlyRankings);
         const filteredMonthlyFinalData = filterDataByMonths(monthlyFinalData);
         const filteredSubmissions = filterDataByMonths(submissions);
 
-        // Display filter info
         if (selectedMonths && selectedMonths.length > 0 && !showAllData) {{
             console.log(`🎯 Displaying data for months: ${{selectedMonths.join(', ')}}`);
-            // You can also show this message in the UI
             document.getElementById('narrator-text').innerText = `Battles for: ${{selectedMonths.join(', ')}}`;
         }}
         
@@ -1746,7 +1732,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         let isAutoPlaying = autoPlay;
         let isPaused = false;
 
-        // Auto-start battles with countdown if autoPlay is true
         if (autoPlay) {{
             showCountdown();
         }}
@@ -1770,31 +1755,26 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
                   clearInterval(countdown);
                   countdownOverlay.innerHTML = '<div class="countdown-text">GO!</div>';
                   
-                  // Play cheer sound when countdown finishes
                   const cheer = document.getElementById("cheer-sound");
-                  cheer.volume = 0.5; // Set appropriate volume
+                  cheer.volume = 0.5;
                   cheer.play();
                   
-                  // Remove overlay after a brief delay
                   setTimeout(() => {{
                       document.body.removeChild(countdownOverlay);
                       
-                      // Start battles after countdown
                       setTimeout(() => {{
                           startBattles();
                       }}, 500);
-                  }}, 800); // Keep "GO!" visible for 800ms
+                  }}, 800);
               }}
           }}, 1000);
         }}
 
-        // Add this to your JavaScript section
         function adjustLayoutForScreenSize() {{
           const isMobile = window.innerWidth <= 768;
           const controlsDiv = document.querySelector('.controls');
           
           if (isMobile) {{
-            // Stack buttons vertically on mobile
             controlsDiv.style.flexDirection = 'column';
             controlsDiv.style.alignItems = 'center';
             
@@ -1805,7 +1785,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
               button.style.maxWidth = '250px';
             }});
           }} else {{
-            // Arrange buttons horizontally on desktop/tablet
             controlsDiv.style.flexDirection = 'row';
             controlsDiv.style.alignItems = 'center';
             
@@ -1817,7 +1796,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           }}
         }}
 
-        // Call on load and resize
         window.addEventListener('load', adjustLayoutForScreenSize);
         window.addEventListener('resize', adjustLayoutForScreenSize);
 
@@ -1898,17 +1876,14 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         monthlyFinalButton.onclick = showMonthlyFinal;
         controlsDiv.appendChild(monthlyFinalButton); 
 
-        // Initialize 3D weapons
-         function initWeapons() {{
+        function initWeapons() {{
           console.log("Initializing weapons...");
   
-          // Check if Three.js is loaded
           if (typeof THREE === 'undefined') {{
             console.error("Three.js not loaded!");
             return;
           }}
          
-          // Create weapons for each avatar
           createWeapon('weapon-container-A', 'sword');
           createWeapon('weapon-container-B', 'axe');
         }}
@@ -1920,15 +1895,12 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           const width = 80;
           const height = 80;
           
-          // Create scene
           const scene = new THREE.Scene();
           
-          // Create camera
           const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000);
           camera.position.z = 6;
           camera.position.y = 1;
           
-          // Create renderer with better quality
           const renderer = new THREE.WebGLRenderer({{ 
               alpha: true,
               antialias: true 
@@ -1938,7 +1910,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           renderer.setPixelRatio(window.devicePixelRatio);
           container.appendChild(renderer.domElement);
           
-          // Add enhanced lighting
           const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
           scene.add(ambientLight);
 
@@ -1950,7 +1921,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           pointLight.position.set(0, 3, 5);
           scene.add(pointLight);
 
-          // Add combat-style lighting
           const combatLight = new THREE.PointLight(0xaa0000, 0.8, 50);
           combatLight.position.set(-5, 2, 3);
           scene.add(combatLight);
@@ -1959,10 +1929,8 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           steelLight.position.set(5, 2, 3);
           scene.add(steelLight);
           
-          // Create weapon based on type
           let weapon;
           if (type === 'axe') {{
-              // Create a combat battle axe
               const handleGeometry = new THREE.CylinderGeometry(0.15, 0.2, 3.5, 16);
               const handleMaterial = new THREE.MeshPhongMaterial({{ 
                   color: "#00CED1", 
@@ -1971,7 +1939,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
               }});
               const handle = new THREE.Mesh(handleGeometry, handleMaterial);
               
-              // Add metal rings to handle
               const ringGeometry = new THREE.TorusGeometry(0.2, 0.04, 16, 32);
               const ringMaterial = new THREE.MeshPhongMaterial({{ 
                   color: 0xffffff, 
@@ -1996,7 +1963,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
               blade.position.y = 2;
               blade.rotation.x = Math.PI / 2;
               
-              // Add combat edge to blade
               const bladeEdgeGeometry = new THREE.CylinderGeometry(0, 1.5, 0.06, 5);
               const bladeEdgeMaterial = new THREE.MeshPhongMaterial({{ 
                   color: "#8A2BE2", 
@@ -2023,7 +1989,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
               spike.rotation.x = Math.PI / 2;
               spike.rotation.z = Math.PI;
               
-              // Add combat edge to spike
               const spikeEdgeGeometry = new THREE.CylinderGeometry(0, 0.9, 0.06, 5);
               const spikeEdgeMaterial = new THREE.MeshPhongMaterial({{ 
                   color: "#4682B4", 
@@ -2069,7 +2034,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
               weapon.add(connectorGem);
               
           }} else {{
-              // Create combat sword
               const handleGeometry = new THREE.CylinderGeometry(0.3, 0.3, 1.2, 16);
               const handleMaterial = new THREE.MeshPhongMaterial({{ 
                   color: "#FF4500", 
@@ -2171,7 +2135,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
               weapon.add(pommelGem);
           }}
           
-          // Position weapon appropriately for each side
           if (containerId === 'weapon-container-A') {{
               weapon.rotation.x = -Math.PI / 6;
               weapon.rotation.y = Math.PI / 8;
@@ -2223,7 +2186,7 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
 
             renderer.domElement.addEventListener("webglcontextrestored", function () {{
               console.log("✅ WebGL context restored, reloading scene...");
-              createWeapon(containerId, type); // re-initialize weapon for this container
+              createWeapon(containerId, type);
         }});
         }}
 
@@ -2261,30 +2224,23 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           const prefix = isLabA ? "labA" : "labB";
           const narratorPrefix = isLabA ? "narrator-labA" : "narrator-labB";
           
-          // Get the lab username 
           const labUsername = labData.lab || labData.Lab || "Unknown Lab";
           
-          // Get the avatar path from the resolved avatar mapping
           const avatarPath = avatarMap[labUsername] || DEFAULT_AVATAR;
           
-          // Get the display name (avatar name) instead of username
           const displayName = avatarNameMap[labUsername] || labUsername;
           
           document.getElementById(`${{narratorPrefix}}-name`).innerText = displayName;
           document.getElementById(`${{prefix}}-avatar`).src = avatarPath;
           
-          // Apply 3D effect to avatar
           document.getElementById(`${{prefix}}-avatar`).classList.add('avatar-3d');
           
-          // Only show CV and Ratio if they exist
           document.getElementById(`${{narratorPrefix}}-cv`).innerText = `CV: ${{labData.cv_value || 'N/A'}}`;
           document.getElementById(`${{narratorPrefix}}-ratio`).innerText = `Ratio: ${{labData.ratio_value || 'N/A'}}`;
         }}
 
         function calculateDamage(rating, opponentRating) {{
-          // Calculate damage based on rating difference
           const diff = rating - opponentRating;
-          // Normalize to 0-100 scale
           return Math.max(10, Math.min(90, 50 + (diff / 30)));
         }}
 
@@ -2292,7 +2248,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           const logEntry = document.createElement('div');
           logEntry.className = 'battle-log-entry';
           
-          // Add month filter info to the first entry
           if (document.getElementById('battle-log-entries').children.length === 0) {{
               if (selectedMonths && selectedMonths.length > 0 && !showAllData) {{
                   const filterInfo = document.createElement('div');
@@ -2310,7 +2265,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
 
         function addRankingsButton() {{
           const controlsDiv = document.querySelector('.controls');
-          // Remove existing rankings button if it exists
           const existingBtn = document.getElementById('show-rankings-btn');
           if (existingBtn) {{
               existingBtn.remove();
@@ -2324,11 +2278,9 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
               document.getElementById('rankings-section').scrollIntoView({{behavior: 'smooth'}});
           }};
           
-          // Insert after the Watch Battle button
           controlsDiv.appendChild(rankingsButton);
       }}
 
-      // Call this when the page loads
       window.addEventListener('load', function() {{
           addRankingsButton();
       }});
@@ -2339,39 +2291,34 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           
           const battle = filteredBattleLogs[currentBattleIndex];
           
-          // Find lab data from submissions
           const labAData = submissions.find(s => s.Lab === battle.lab_a) || {{lab: battle.lab_a}};
           const labBData = submissions.find(s => s.Lab === battle.lab_b) || {{lab: battle.lab_b}};
 
-          // Update lab info 
           updateLabStats(labAData, true);
           updateLabStats(labBData, false);
           
-          // Initial narration
           document.getElementById('narrator-text').innerText = `Round ${{battle.round_num}}: ${{getDisplayName(battle.lab_a)}} vs ${{getDisplayName(battle.lab_b)}}`;
           addBattleLog(`🔔 Round ${{battle.round_num}}: ${{getDisplayName(battle.lab_a)}} vs ${{getDisplayName(battle.lab_b)}}`);
 
           await sleep(1500);
           
-          // Get avatar elements
           const avatarA = document.getElementById('labA-avatar');
           const avatarB = document.getElementById('labB-avatar');
           
-          // Simulate battle sequence
           const attacks = [
             {{
               attacker: battle.lab_a, 
               target: battle.lab_b,
               damage: calculateDamage(battle.updated_rating_a, battle.updated_rating_b), 
               message: getRandomNarration(battle.lab_a),
-              side: 'left' // Lab A attacks from left
+              side: 'left'
             }},
             {{
               attacker: battle.lab_b, 
               target: battle.lab_a,
               damage: calculateDamage(battle.updated_rating_b, battle.updated_rating_a), 
               message: getRandomNarration(battle.lab_b),
-              side: 'right' // Lab B attacks from right
+              side: 'right'
             }}
           ];
 
@@ -2381,10 +2328,8 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
             const attackerDisplay = getDisplayName(attack.attacker);
             addBattleLog(`⚡ ${{attack.message.replace("{{attacker}}", attackerDisplay)}}`);
             
-            // Trigger weapon slash animation
             triggerWeaponSlash(attack.side);
             
-            // Apply animations to avatars
             if (attack.attacker === battle.lab_a) {{
               avatarA.classList.add('attacking-left');
               await sleep(300);
@@ -2397,26 +2342,22 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
               createImpactEffect(avatarA, false);
             }}
             
-            // Apply damage to opponent
             const targetHp = attack.attacker === battle.lab_a ? 'labB-hp' : 'labA-hp';
             document.getElementById(targetHp).style.width = (100 - attack.damage) + '%';
             
             await sleep(700);
             
-            // Remove animation classes
             avatarA.classList.remove('attacking-left', 'taking-hit');
             avatarB.classList.remove('attacking-right', 'taking-hit');
           }}
 
           
-          // Announce winner
           if (battle.winner && battle.winner !== "Draw") {{
             const winnerDisplay = getDisplayName(battle.winner);
             const loserDisplay = getDisplayName(battle.loser);
             document.getElementById('narrator-text').innerText = `🏆 ${{winnerDisplay}} WINS!`;
             addBattleLog(`🎉 ${{winnerDisplay}} defeats ${{loserDisplay}}! ELO: ${{battle.updated_rating_a}} - ${{battle.updated_rating_b}}`);
 
-            // Add winner glow effect to avatar
             if (battle.winner === battle.lab_a) {{
               avatarA.classList.add('winner-glow');
             }} else {{
@@ -2434,21 +2375,16 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           if (isAutoPlaying && !isPaused) {{
             await sleep(2000);
             
-            // Remove winner glow before next battle
             avatarA.classList.remove('winner-glow');
             avatarB.classList.remove('winner-glow');
 
-            // Check if this is the last battle 
             if (currentBattleIndex >= battleLogs.length) {{
-              // All battles are finished - show rankings
               showRankings();
               document.getElementById('rankings-section').scrollIntoView({{behavior: 'smooth'}});
             }} else {{
-              // Continue with next battle
               playBattle();
             }}
           }} else if (currentBattleIndex >= battleLogs.length) {{
-            // Manual mode and all battles are finished - show rankings
             showRankings();
             document.getElementById('rankings-section').scrollIntoView({{behavior: 'smooth'}});
           }}
@@ -2461,7 +2397,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
             }}
         }}
 
-        // Call this when the page loads
         window.addEventListener('load', displayFilterInfo);
 
         function createImpactEffect(targetElement, isRightSide) {{
@@ -2484,7 +2419,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           isAutoPlaying = true;
           isPaused = false;
           playBattle();
-              // lepas countdown baru play audio
               const cheer = document.getElementById("cheer-sound");
               cheer.volume = 0.5;
               cheer.play();
@@ -2501,7 +2435,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
               return;
           }}
           
-          // Group by parameter and level
           const groupedData = {{}};
           filteredMonthlyRankings.forEach(row => {{
               const key = `${{row.parameter}}|${{row.level}}`;
@@ -2511,11 +2444,9 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
               groupedData[key].push(row);
           }});
 
-          // Create tables for each group
           for (const [key, rankings] of Object.entries(groupedData)) {{
               const [parameter, level] = key.split('|');
               
-              // Group rankings by month
               const rankingsByMonth = {{}};
               rankings.forEach(row => {{
                   if (!rankingsByMonth[row.month]) {{
@@ -2524,12 +2455,10 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
                   rankingsByMonth[row.month].push(row);
               }});
               
-              // Sort months chronologically
               const sortedMonths = Object.keys(rankingsByMonth).sort((a, b) => {{
                   const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                   
                   if (a.includes('-') && b.includes('-')) {{
-                      // YYYY-MM format
                       return new Date(a) - new Date(b);
                   }} else {{
                      
@@ -2570,29 +2499,23 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
                   currentMonthRankings.forEach(row => {{
                       const tr = document.createElement('tr');
                       
-                      // Calculate movement
                       let movementHtml = '';
                       
                       if (monthIndex === 0) {{
-                          // First month - show "NEW"
                           movementHtml = '<span style="color: #00ff00; font-weight: bold;">NEW</span>';
                       }} else {{
-                          // Get previous month's ranking for this lab
                           const prevMonth = sortedMonths[monthIndex - 1];
                           const prevMonthRankings = rankingsByMonth[prevMonth];
                           const prevRank = prevMonthRankings.find(prev => prev.lab === row.lab);
                           
                           if (!prevRank) {{
-                              // New lab this month
                               movementHtml = '<span style="color: #00ff00; font-weight: bold;">NEW</span>';
                           }} else {{
                               const movement = prevRank.ranking - row.ranking; 
                               
                               if (movement > 0) {{
-                                  // Rank improved - green up arrow
                                   movementHtml = `<span style="color: #00ff00; font-weight: bold;">↑ ${{movement}}</span>`;
                               }} else if (movement < 0) {{
-                                  // Rank dropped - red down arrow  
                                   movementHtml = `<span style="color: #ff4444; font-weight: bold;">↓ ${{Math.abs(movement)}}</span>`;
                               }} else {{
                                   movementHtml = `<span style="color: #ffff00; font-weight: bold;">-</span>`;
@@ -2624,7 +2547,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           document.getElementById('narrator-text').innerText = 'Battle Arena';
           document.getElementById('battle-log-entries').innerHTML = '';
           
-          // Reset narrator box info
           document.getElementById('narrator-labA-name').innerText = 'Waiting...';
           document.getElementById('narrator-labB-name').innerText = 'Waiting...';
           document.getElementById('narrator-labA-cv').innerText = 'CV: -';
@@ -2635,7 +2557,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           document.getElementById('labA-avatar').src = DEFAULT_AVATAR;
           document.getElementById('labB-avatar').src = DEFAULT_AVATAR;
           
-          // Remove any animation classes
           document.getElementById('labA-avatar').classList.remove('attacking-left', 'taking-hit', 'winner-glow');
           document.getElementById('labB-avatar').classList.remove('attacking-right', 'taking-hit', 'winner-glow');
           
@@ -2674,7 +2595,6 @@ def get_lab_rating(lab, parameter, level):
 
 
 def update_lab_rating(lab, parameter, level, rating):
-    """Update or insert a lab's rating for a parameter-level combination"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -2780,7 +2700,6 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
     df["Ratio"] = pd.to_numeric(df["Ratio"], errors="coerce")
     df = df.dropna(subset=["n(QC)", "Working_Days"])
 
-    # Initialize rating from database
     ratings = {}
     battle_logs = []
     rating_progression = []
@@ -2792,7 +2711,6 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
     existing_ratings = cursor.fetchall()
     conn.close()
     
-    # Create a dictionary for quick lookup
     rating_lookup = {}
     for row in existing_ratings:
         key = f"{row['lab']}_{row['parameter']}_{row['level']}"
@@ -2844,7 +2762,6 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
 
             labs = group.to_dict("records")
             
-            # All pairings
             for lab1, lab2 in itertools.combinations(labs, 2):
                 labA, labB = lab1["Lab"], lab2["Lab"]
                 cvA, cvB = lab1.get("CV(%)"), lab2.get("CV(%)")
@@ -2881,11 +2798,9 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                 else:
                     ratio_score_A = ratio_score_B = 0.5
 
-                # Composite score
                 S_A = (cv_score_A + ratio_score_A) / 2
                 S_B = (cv_score_B + ratio_score_B) / 2
 
-                # ELO calculation
                 Ra, Rb = ratings[labA_key], ratings[labB_key]
                 Ea = 1 / (1 + 10 ** ((Rb - Ra) / 400))
                 Eb = 1 / (1 + 10 ** ((Ra - Rb) / 400))
@@ -2941,7 +2856,6 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
 
                 update_lab_rating(lab, param, level, ratings[lab_key])
 
-            # Record rating progression for this month
             for lab in group["Lab"].unique():
                 lab_key = f"{lab}_{key_prefix}"
                 rating_progression.append({
@@ -3062,7 +2976,6 @@ def run():
     apply_sidebar_theme()
     st.markdown("""
     <style>
-  /* Main Container */
   .main .block-container {
       background: linear-gradient(135deg, 
           #1a0033 0%, 
@@ -3077,7 +2990,6 @@ def run():
       overflow-x: hidden;
   }
 
-  /* Animated Background Elements */
   .main .block-container::before {
       content: '';
       position: fixed;
@@ -3099,7 +3011,6 @@ def run():
       100% { opacity: 1; transform: scale(1.05); }
   }
 
-  /* Title Styling */
   h1 {
       font-family: 'Cinzel', serif !important;
       font-size: 85px !important;
@@ -3127,7 +3038,6 @@ def run():
       100% { background-position: 0% 50%; }
   }
 
-  /* Status Messages */
   .stAlert > div {
       border-radius: 15px !important;
       border: 2px solid transparent !important;
@@ -3158,28 +3068,12 @@ def run():
       100% { left: 100%; }
   }
 
-  /* Success Alert */
   div[data-testid="stAlert"][data-baseweb="notification"] > div {
       background: linear-gradient(135deg, rgba(138, 43, 226, 0.25), rgba(75, 0, 130, 0.15)) !important;
       border: 2px solid #8A2BE2 !important;
       box-shadow: 0 0 20px rgba(138, 43, 226, 0.4) !important;
   }
 
-  /* Info Alert */
-  .stAlert [role="alert"]:has([data-testid="stMarkdownContainer"]:contains("Lab View")) {
-      background: linear-gradient(135deg, rgba(65, 105, 225, 0.25), rgba(30, 144, 255, 0.15)) !important;
-      border: 2px solid #4169E1 !important;
-      box-shadow: 0 0 20px rgba(65, 105, 225, 0.4) !important;
-  }
-
-  /* Warning Alert */
-  .stAlert [role="alert"]:has([data-testid="stMarkdownContainer"]:contains("Please log in")) {
-      background: linear-gradient(135deg, rgba(255, 215, 0, 0.25), rgba(255, 165, 0, 0.15)) !important;
-      border: 2px solid #FFD700 !important;
-      box-shadow: 0 0 20px rgba(255, 215, 0, 0.4) !important;
-  }
-
-  /* Avatar Container Enhancement */
   .avatar-container {
       width: 100px !important;
       height: 100px !important;
@@ -3229,16 +3123,6 @@ def run():
       border-radius: 50% !important;
   }
 
-  /* User Info Text */
-  p:contains("Logged in as") {
-      font-family: 'Rajdhani', sans-serif !important;
-      font-size: 1.2rem !important;
-      font-weight: 700 !important;
-      color: #FFD700 !important;
-      text-shadow: 0 2px 10px rgba(255, 215, 0, 0.6) !important;
-  }
-
-  /* DataFrames */
   .stDataFrame {
       border-radius: 15px !important;
       overflow: hidden !important;
@@ -3296,7 +3180,6 @@ def run():
       box-shadow: inset 0 0 15px rgba(255, 215, 0, 0.3) !important;
   }
 
-  /* Buttons */
   .stButton > button {
       background: linear-gradient(135deg, #4169E1 0%, #8A2BE2 50%, #4169E1 100%) !important;
       border: 2px solid #8A2BE2 !important;
@@ -3333,12 +3216,6 @@ def run():
       box-shadow: 0 3px 15px rgba(138, 43, 226, 0.4) !important;
   }
 
-  @keyframes battleButtonPulse {
-      0% { box-shadow: 0 5px 20px rgba(138, 43, 226, 0.5); }
-      100% { box-shadow: 0 8px 30px rgba(255, 215, 0, 0.8); }
-  }
-
-  /* Tabs */
   .stTabs {
       background: rgba(138, 43, 226, 0.1) !important;
       border-radius: 15px !important;
@@ -3372,7 +3249,6 @@ def run():
   .stTabs [data-baseweb="tab"]:hover {
       background: linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(138, 43, 226, 0.2)) !important;
       border-color: #8A2BE2 !important;
-     
   }
 
   h2, h3 {
@@ -3400,41 +3276,9 @@ def run():
       100% { color: #8A2BE2; text-shadow: 0 0 15px rgba(138, 43, 226, 0.8); }
   }
 
-  /* Countdown Styling */
-  div[style*="text-align: center"][style*="font-size: 48px"] {
-      background: linear-gradient(45deg, #8A2BE2, #4169E1, #FFD700) !important;
-      -webkit-background-clip: text !important;
-      -webkit-text-fill-color: transparent !important;
-      background-clip: text !important;
-      filter: drop-shadow(0 0 20px rgba(138, 43, 226, 0.8)) !important;
-      animation: countdownPulse 0.5s ease-in-out !important;
-  }
-
-  @keyframes countdownPulse {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.2); }
-      100% { transform: scale(1); }
-  }
-
-  /* Error Messages */
-  .stError > div {
-      background: linear-gradient(135deg, rgba(138, 43, 226, 0.2), rgba(75, 0, 130, 0.1)) !important;
-      border: 2px solid #8A2BE2 !important;
-      border-radius: 15px !important;
-      color: #e0e0ff !important;
-      font-family: 'Rajdhani', sans-serif !important;
-      font-weight: 600 !important;
-      box-shadow: 0 0 20px rgba(138, 43, 226, 0.4) !important;
-  }
-
-  /* Responsive Design */
   @media (max-width: 768px) {
       h1 {
           font-size: 2.5rem !important;
-      }
-
-      h1::before, h1::after {
-          display: none !important;
       }
 
       .avatar-container {
@@ -3458,18 +3302,6 @@ def run():
       }
   }
 
-  
-  .stSpinner > div {
-      border-color: #8A2BE2 !important;
-      animation: loadingPulse 1s ease-in-out infinite !important;
-  }
-
-  @keyframes loadingPulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-  }
-
-  /* Scrollbar Styling */
   ::-webkit-scrollbar {
       width: 12px !important;
   }
@@ -3504,19 +3336,6 @@ def run():
       0% { transform: translateY(0px) rotate(0deg); }
       100% { transform: translateY(-10px) rotate(5deg); }
   }
-
-    @media (max-width: 768px) {
-        .stDataFrame {
-            font-size: 12px;
-        }
-        .stButton > button {
-            width: 100%;
-            margin: 5px 0;
-        }
-        .stSelectbox, .stTextInput {
-            width: 100% !important;
-        }
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -3529,7 +3348,6 @@ def run():
     st.sidebar.markdown("---")
     st.sidebar.subheader("🎯 Simulation Month Selection")
     
-    # Get available months from database
     conn = get_db_connection()
     months_df = pd.read_sql("SELECT DISTINCT month FROM submissions ORDER BY month", conn)
     conn.close()
@@ -3609,11 +3427,10 @@ def run():
             st.markdown(f"**Logged in as:** `{logged_lab}`")
             st.markdown(f"**Your Avatar:** `{avatar_name}`")
 
-
     if role == "admin":
-        df = fetch_lab_data()  # Admin sees all
+        df = fetch_lab_data()
     else:
-        df = fetch_lab_data(lab=logged_lab)  # Lab sees only their own data
+        df = fetch_lab_data(lab=logged_lab)
 
     st.session_state["llkk_data"] = df
 
@@ -3624,7 +3441,6 @@ def run():
     st.markdown("### Submitted Data")
     st.dataframe(df, use_container_width=True, hide_index=True)
 
-      # Load cached Elo history/progression if present
     if "elo_history" not in st.session_state and os.path.exists("data/elo_history.csv"):
         hist_df = pd.read_csv("data/elo_history.csv")
         st.session_state["elo_history"] = dict(zip(hist_df["Unnamed: 0"], hist_df["elo"]))
@@ -3632,7 +3448,6 @@ def run():
     if "elo_progression" not in st.session_state and os.path.exists("data/elo_progression.csv"):
         st.session_state["elo_progression"] = pd.read_csv("data/elo_progression.csv")
 
-    # Initialize simulation state
     if "battle_simulation_started" not in st.session_state:
         st.session_state.battle_simulation_started = False
     if "show_countdown" not in st.session_state:
@@ -3659,14 +3474,13 @@ def run():
                     st.session_state.pop(key, None)
                 st.success("✅ All historical data cleared from database.")
 
-                time.sleep(2) #delay 2sec 
+                time.sleep(2)
                 st.rerun()
         
         with tab2:
           if st.session_state.get("show_countdown", False):
               countdown_placeholder = st.empty()
               
-              # Countdown animation
               for i in range(st.session_state.countdown_value, 0, -1):
                   countdown_placeholder.markdown(f"""
                   <div style="text-align: center; font-size: 48px; color: #ff6b6b; font-weight: bold;">
