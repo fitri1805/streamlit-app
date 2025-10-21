@@ -177,22 +177,18 @@ def insert_submission(data):
     conn.close()
 
 def save_monthly_final(month, lab, lab_rank, monthly_final_elo):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO monthly_final (month, lab, lab_rank, monthly_final_elo)
-            VALUES (%s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE lab_rank = %s, monthly_final_elo = %s
-        """, (month, lab, lab_rank, monthly_final_elo, lab_rank, monthly_final_elo))
-        conn.commit()
-        st.info(f"✅ Saved monthly final for {lab}")  
-    except Exception as e:
-        st.error(f"❌ Failed to save monthly final for {lab}: {str(e)}")
-    finally:
-        if 'conn' in locals():
-            conn.close()
-            
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT INTO monthly_final (month, lab, lab_rank, monthly_final_elo)
+        VALUES (%s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE lab_rank = %s, monthly_final_elo = %s
+    """, (month, lab, lab_rank, monthly_final_elo, lab_rank, monthly_final_elo))
+    
+    conn.commit()
+    conn.close()
+
 def get_monthly_final(month=None):
     conn = get_db_connection()
     
@@ -2691,22 +2687,19 @@ def update_lab_rating(lab, parameter, level, rating):
     conn.commit()
     conn.close()
 
+
 def save_monthly_ranking(lab, parameter, level, month, elo_before_bonus, bonus, final_elo, ranking):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO monthly_rankings 
-            (lab, parameter, level, month, elo_before_bonus, bonus, final_elo, ranking)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, (lab, parameter, level, month, elo_before_bonus, bonus, final_elo, ranking))
-        conn.commit()
-        st.info(f"✅ Saved ranking for {lab}")  
-    except Exception as e:
-        st.error(f"❌ Failed to save monthly ranking for {lab}: {str(e)}")
-    finally:
-        if 'conn' in locals():
-            conn.close()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT INTO monthly_rankings 
+        (lab, parameter, level, month, elo_before_bonus, bonus, final_elo, ranking)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, (lab, parameter, level, month, elo_before_bonus, bonus, final_elo, ranking))
+    
+    conn.commit()
+    conn.close()
 
 def get_previous_month_rankings(current_month):   
     if not current_month:
