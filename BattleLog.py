@@ -2764,7 +2764,7 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
     st.session_state.simulation_months = selected_months if not run_all_months else None
     st.session_state.run_all_months = run_all_months
 
-    df = df.copy()
+    original_df = df.copy()
     
     if selected_months and not run_all_months:
         df = df[df['Month'].isin(selected_months)]
