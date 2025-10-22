@@ -1720,31 +1720,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         const userLab = "{user_lab or ''}";
         const selectedMonths = {selected_months_json};
         const showAllData = {show_all_data_js};
-        console.log("=== DATA LOADING DEBUG ===");
-        console.log("Monthly Final Data Raw:", monthlyFinalData);
-        console.log("Monthly Final Data Filtered:", filteredMonthlyFinalData);
-        console.log("Selected Months:", selectedMonths);
-        console.log("Show All Data:", showAllData);
-        console.log("=== ENVIRONMENT CHECK ===");
-        console.log("User Agent:", navigator.userAgent);
-        console.log("Three.js available:", typeof THREE !== 'undefined');
-        console.log("WebGL supported:", (function() {{
-            try {{
-                const canvas = document.createElement('canvas');
-                return !!(window.WebGLRenderingContext && 
-                        (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
-            }} catch (e) {{
-                return false;
-            }}
-        }})());
-
-        // Check if critical elements exist
-        window.addEventListener('load', function() {{
-            console.log("Page loaded - checking critical elements:");
-            console.log("Monthly Final Section:", document.getElementById('monthly-final-section'));
-            console.log("Monthly Final Container:", document.getElementById('monthly-final-container'));
-            console.log("Controls Div:", document.querySelector('.controls'));
-        }});
 
         // --- MONTH FILTERING FUNCTION ---
         function filterDataByMonths(data) {{
@@ -1752,14 +1727,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
                 return data;
             }}
             return data.filter(item => selectedMonths.includes(item.month));
-        }}
-
-        if (monthlyFinalData && monthlyFinalData.length > 0 && (!filteredMonthlyFinalData || filteredMonthlyFinalData.length === 0)) {{
-            console.warn("FILTERING ISSUE: Raw data exists but filtered is empty!");
-            console.log("Available months in raw data:", [...new Set(monthlyFinalData.map(item => item.month))]);
-            
-            // Temporary fix: use raw data if filtered is empty
-            filteredMonthlyFinalData = monthlyFinalData;
         }}
 
         // --- APPLY FILTERS TO ALL DATA ---
@@ -1780,9 +1747,9 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         let isPaused = false;
 
         // Auto-start battles with countdown if autoPlay is true
-        //if (autoPlay) {{
-        //    showCountdown();
-        //}}
+        if (autoPlay) {{
+            showCountdown();
+        }}
 
         function getDisplayName(labName) {{
           return avatarNameMap[labName] || labName;
@@ -1806,7 +1773,7 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
                   // Play cheer sound when countdown finishes
                   // const cheer = document.getElementById("cheer-sound");
                   // cheer.volume = 0.5; // Set appropriate volume
-                  // cheer.play();
+                  //cheer.play();
                   
                   // Remove overlay after a brief delay
                   setTimeout(() => {{
@@ -1856,57 +1823,36 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
 
 
         function showMonthlyFinal() {{
-            try {{
-                console.log("Show Monthly Final clicked");
-                console.log("Monthly Final Data:", filteredMonthlyFinalData);
-                
-                if (!filteredMonthlyFinalData || filteredMonthlyFinalData.length === 0) {{
-                    alert("No monthly final data available! Check console for details.");
-                    console.error("No data available:", {{
-                        raw: monthlyFinalData,
-                        filtered: filteredMonthlyFinalData,
-                        selectedMonths: selectedMonths
-                    }});
-                    return;
-                }}
-                
-                document.getElementById('monthly-final-section').classList.remove('hidden');
-                renderMonthlyFinal();
-                document.getElementById('monthly-final-section').scrollIntoView({{behavior: 'smooth'}});
-            }} catch (error) {{
-                console.error("Error in showMonthlyFinal:", error);
-                alert("Error loading monthly final data: " + error.message);
-            }}
-        }}
+          console.log("Show Monthly Final clicked");
+          console.log("Monthly Final Data:", filteredMonthlyFinalData);
+          
+          if (!filteredMonthlyFinalData || filteredMonthlyFinalData.length === 0) {{
+              alert("No monthly final data available!");
+              return;
+          }}
+          
+          document.getElementById('monthly-final-section').classList.remove('hidden');
+          renderMonthlyFinal();
+          document.getElementById('monthly-final-section').scrollIntoView({{behavior: 'smooth'}});
+      }}
         
         function renderMonthlyFinal() {{
           const container = document.getElementById('monthly-final-container');
           container.innerHTML = '';
           
-          console.log("=== RENDER MONTHLY FINAL DEBUG ===");
-          console.log("Filtered Data:", filteredMonthlyFinalData);
+          console.log("Monthly Final Data:", filteredMonthlyFinalData);
           
-          // If no filtered data, try using raw data
-          let displayData = filteredMonthlyFinalData;
-          if (!displayData || displayData.length === 0) {{
-              console.warn("Using raw data instead of filtered");
-              displayData = monthlyFinalData;
-          }}
-          
-          if (!displayData || displayData.length === 0) {{
-              container.innerHTML = `
-                  <div style="color: red; padding: 20px; text-align: center;">
-                      <h3>No monthly final data available</h3>
-                      <p>Raw data: ${{monthlyFinalData ? monthlyFinalData.length : 0}} records</p>
-                      <p>Filtered data: ${{filteredMonthlyFinalData ? filteredMonthlyFinalData.length : 0}} records</p>
-                      <p>Check browser console for details</p>
-                  </div>
-              `;
+          if (!filteredMonthlyFinalData || filteredMonthlyFinalData.length === 0) {{
+              container.innerHTML = '<p>No monthly final data available.</p>';
               return;
           }}
           
+          if (monthlyFinalData.length > 0) {{
+              console.log("First item keys:", Object.keys(monthlyFinalData[0]));
+          }}
+          
           const groupedByMonth = {{}};
-          displayData.forEach(row => {{
+          filteredMonthlyFinalData.forEach(row => {{
               const month = row.month;
               if (!groupedByMonth[month]) {{
                   groupedByMonth[month] = [];
@@ -1920,10 +1866,8 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
               
               const thead = document.createElement('thead');
               thead.innerHTML = `
-                  <tr>
-                      <th colspan="3" style="text-align:center;">Month: ${{month}}</th>
-                  </tr>
-                  <tr>
+                  
+                  <tr colspan="3" style="text-align:center;">
                       <th>Rank</th>
                       <th>Lab</th>
                       <th>Monthly Final Elo</th>
@@ -1935,9 +1879,9 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
               rankings.sort((a, b) => a.lab_rank - b.lab_rank).forEach(row => {{
                   const tr = document.createElement('tr');
                   tr.innerHTML = `
-                      <td class="rank-${{row.lab_rank}}">${{row.lab_rank}}</td>
-                      <td>${{getDisplayName(row.lab)}}</td>
-                      <td>${{row.monthly_final_elo}}</td>
+                    <td class="rank-${{row.lab_rank}}">${{row.lab_rank}}</td>
+                    <td>${{getDisplayName(row.lab)}}</td>
+                    <td>${{row.monthly_final_elo}}</td>
                   `;
                   tbody.appendChild(tr);
               }});
@@ -1955,7 +1899,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         controlsDiv.appendChild(monthlyFinalButton); 
 
         // Initialize 3D weapons
-        /*
          function initWeapons() {{
           console.log("Initializing weapons...");
   
@@ -2307,7 +2250,6 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         }}
 
         window.addEventListener('load', initWeapons)
-        */
         
         function getRandomNarration(attacker) {{
           const randomIndex = Math.floor(Math.random() * narrationPhrases.length);
