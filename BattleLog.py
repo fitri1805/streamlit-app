@@ -3024,37 +3024,37 @@ def simulate_fadzly_algorithm(df, selected_months=None, run_all_months=True):
                           ranking=row["Rank"]
                     )
 
-          if summary_tables:
-              monthly = pd.concat(summary_tables)
-              monthly_test_avg = monthly.groupby(["Lab", "Test", "Month"])["Final Elo"].mean().reset_index()
-              monthly_final = monthly_test_avg.groupby(["Lab", "Month"])["Final Elo"].mean().reset_index()
-              for month in months_to_process:
-                  month_data = monthly_final[monthly_final["Month"] == month].copy()
-                  month_data = month_data.sort_values("Final Elo", ascending=False).reset_index(drop=True)
-                  month_data.index += 1
-                  month_data["Rank"] = month_data.index
-                  
-                  for _, row in month_data.iterrows():
-                      save_monthly_final(
-                          month=row["Month"],
-                          lab=row["Lab"],
-                          lab_rank=row["Rank"],
-                          monthly_final_elo=round(row["Final Elo"], 2)
-                      )
-              
-              st.markdown("### 🏆 Overall Monthly Ranking (Simulated Months)")
-              pivot_data = monthly_final.pivot(index="Lab", columns="Month", values="Final Elo")
-              st.dataframe(pivot_data)
+    if summary_tables:
+        monthly = pd.concat(summary_tables)
+        monthly_test_avg = monthly.groupby(["Lab", "Test", "Month"])["Final Elo"].mean().reset_index()
+        monthly_final = monthly_test_avg.groupby(["Lab", "Month"])["Final Elo"].mean().reset_index()
+        for month in months_to_process:
+            month_data = monthly_final[monthly_final["Month"] == month].copy()
+            month_data = month_data.sort_values("Final Elo", ascending=False).reset_index(drop=True)
+            month_data.index += 1
+            month_data["Rank"] = month_data.index
+            
+            for _, row in month_data.iterrows():
+                save_monthly_final(
+                    month=row["Month"],
+                    lab=row["Lab"],
+                    lab_rank=row["Rank"],
+                    monthly_final_elo=round(row["Final Elo"], 2)
+                )
+        
+        st.markdown("### 🏆 Overall Monthly Ranking (Simulated Months)")
+        pivot_data = monthly_final.pivot(index="Lab", columns="Month", values="Final Elo")
+        st.dataframe(pivot_data)
 
-          st.session_state.simulation_results = {
-              "summary_tables": summary_tables,
-          }  
+    st.session_state.simulation_results = {
+        "summary_tables": summary_tables,
+    }  
 
-          st.session_state["elo_history"] = ratings
-          st.session_state["elo_progression"] = pd.DataFrame(rating_progression)
-          st.session_state["fadzly_battles"] = summary_df
+    st.session_state["elo_history"] = ratings
+    st.session_state["elo_progression"] = pd.DataFrame(rating_progression)
+    st.session_state["fadzly_battles"] = summary_df
 
-          st.success("✅ Battle simulation completed and saved to database.")
+    st.success("✅ Battle simulation completed and saved to database.")
 
 def run():
     apply_sidebar_theme()
