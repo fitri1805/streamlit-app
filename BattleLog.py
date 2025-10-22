@@ -1682,11 +1682,9 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
         <button onclick="startBattles()">🎥 Watch Battle</button>
       </div> 
 
-      <!--
       <audio id="cheer-sound">
         <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
       </audio>
-      -->
 
       <div class="battle-log">
         <h3>Chronicle of Battles</h3>
@@ -1772,11 +1770,10 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
                   clearInterval(countdown);
                   countdownOverlay.innerHTML = '<div class="countdown-text">GO!</div>';
                   
-                  /*
+                  // Play cheer sound when countdown finishes
                   const cheer = document.getElementById("cheer-sound");
                   cheer.volume = 0.5; // Set appropriate volume
                   cheer.play();
-                  */
                   
                   // Remove overlay after a brief delay
                   setTimeout(() => {{
@@ -2487,10 +2484,10 @@ def render_visual_battle(battle_logs, monthly_rankings, lab_ratings, submissions
           isAutoPlaying = true;
           isPaused = false;
           playBattle();
-              
-              //const cheer = document.getElementById("cheer-sound");
-              //cheer.volume = 0.5;
-              //cheer.play();
+              // lepas countdown baru play audio
+              const cheer = document.getElementById("cheer-sound");
+              cheer.volume = 0.5;
+              cheer.play();
             }}
         
         function showRankings() {{
