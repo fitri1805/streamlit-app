@@ -19,7 +19,7 @@ def get_connection():
 # Function to check if submission is allowed based on current date
 def is_submission_allowed():
     today = date.today()
-    return 1 <= today.day <= 19
+    return 1 <= today.day <= 14
 
 def count_current_month_submissions(lab):
     today = date.today()
@@ -389,8 +389,8 @@ def run():
     
     with status_col2:
         today = date.today()
-        days_left = 19 - today.day
-        st.info(f"📅 Submission window: 1st-19th ({days_left} days left)")
+        days_left = 14 - today.day
+        st.info(f"📅 Submission window: 1st-14th ({days_left} days left)")
     
     if missing_params:
         with st.expander("Show missing parameters", expanded=False):
