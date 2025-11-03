@@ -432,7 +432,7 @@ def apply_mlbb_theme():
 
 def get_db_connection():
     return mysql.connector.connect(
-        host="145.223.18.115",
+        host="72.61.113.43",
         port=3306,
         user="admin",
         password="@Cittamall13",         
