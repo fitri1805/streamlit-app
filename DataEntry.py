@@ -11,7 +11,7 @@ def get_connection():
     return mysql.connector.connect(
         host="72.61.113.43",
         port=3306,
-        user="admin",
+        user="phpmyadmin",
         password="@Cittamall13",         
         database="gamifiedqc" 
     )
